@@ -26,8 +26,8 @@ func NewInspector(addr string, rt *runtime.Runtime) *Inspector {
 	}
 }
 
-// Start starts the inspector's HTTP server.
-func (i *Inspector) Start(ctx context.Context, b bus.Bus) error {
+// OnStart starts the inspector's HTTP server.
+func (i *Inspector) OnStart(ctx context.Context, b bus.Bus) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/status", i.handleStatus)
 
@@ -36,20 +36,18 @@ func (i *Inspector) Start(ctx context.Context, b bus.Bus) error {
 		Handler: mux,
 	}
 
-	go func() {
+	i.Go(func() {
 		if err := i.server.ListenAndServe(); err != http.ErrServerClosed {
 			// log error
 		}
-	}()
-	return nil
+	})
 }
 
-// Stop gracefully shuts down the inspector's HTTP server.
-func (i *Inspector) Stop(ctx context.Context) error {
+// OnStop gracefully shuts down the inspector's HTTP server.
+func (i *Inspector) OnStop(ctx context.Context) {
 	if i.server != nil {
-		return i.server.Shutdown(ctx)
+		i.server.Shutdown(ctx)
 	}
-	return nil
 }
 
 // handleStatus returns the runtime's status as JSON.
