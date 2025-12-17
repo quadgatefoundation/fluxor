@@ -2,67 +2,63 @@ package reactor
 
 import (
 	"context"
-
-	"github.com/fluxor-io/fluxor/pkg/types"
+	"sync"
 )
 
+// Reactor is a single-goroutine event loop with a bounded mailbox.
 type Reactor struct {
-	name    string
 	mailbox chan func()
-	bus     types.Bus
+	stopped chan struct{}
+	once    sync.Once
 }
 
-func NewReactor(name string, size int) *Reactor {
-	r := &Reactor{
-		name:    name,
-		mailbox: make(chan func(), size),
+// New creates a new Reactor with the given mailbox size.
+func New(mailboxSize int) *Reactor {
+	return &Reactor{
+		mailbox: make(chan func(), mailboxSize),
+		stopped: make(chan struct{}),
 	}
-	return r
 }
 
-func (r *Reactor) Name() string {
-	return r.name
+// Start begins the reactor's event loop.
+func (r *Reactor) Start() {
+	r.once.Do(func() {
+		go r.run()
+	})
 }
 
-func (r *Reactor) OnStart(ctx context.Context, bus types.Bus) error {
-	r.bus = bus
-	go r.loop(ctx)
-	return nil
+// Stop gracefully shuts down the reactor.
+func (r *Reactor) Stop(ctx context.Context) error {
+	close(r.mailbox)
+	select {
+	case <-r.stopped:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
-func (r *Reactor) OnStop(ctx context.Context) error {
-	// A more robust implementation would handle draining the mailbox
-	// and ensuring the loop exits gracefully.
-	return nil
-}
+// Post adds a function to the reactor's mailbox for execution.
+// It is non-blocking and returns ErrBackpressure if the mailbox is full.
+// It returns ErrStopped if the reactor is not running or has been stopped.
+func (r *Reactor) Post(fn func()) error {
+	select {
+	case <-r.stopped:
+		return ErrStopped
+	default:
+	}
 
-// Execute submits a function for execution on the reactor's event loop.
-// It returns types.ErrBackpressure if the reactor's mailbox is full.
-func (r *Reactor) Execute(fn func()) error {
 	select {
 	case r.mailbox <- fn:
 		return nil
 	default:
-		return types.ErrBackpressure
+		return ErrBackpressure
 	}
 }
 
-func (r *Reactor) loop(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case fn := <-r.mailbox:
-			r.safeExecute(fn)
-		}
+func (r *Reactor) run() {
+	defer close(r.stopped)
+	for fn := range r.mailbox {
+		fn()
 	}
-}
-
-func (r *Reactor) safeExecute(fn func()) {
-	defer func() {
-		if r := recover(); r != nil {
-			// TODO: Log the panic. A component panic should not bring down the reactor.
-		}
-	}()
-	fn()
 }

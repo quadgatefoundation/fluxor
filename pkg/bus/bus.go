@@ -11,31 +11,20 @@ import (
 
 var ErrNoSubscribers = errors.New("bus: no subscribers for topic")
 
-// Bus is the interface for the event bus.
-type Bus interface {
-	types.Bus
-	SetReactorProvider(rp ReactorProvider)
-}
-
 type subscription struct {
 	componentName string
 	mailbox       types.Mailbox
 }
 
 type localBus struct {
-	subscribers    map[string][]*subscription
-	mu             sync.RWMutex
-	reactorProvider ReactorProvider
+	subscribers map[string][]*subscription
+	mu          sync.RWMutex
 }
 
-func NewBus() Bus {
+func NewBus() types.Bus {
 	return &localBus{
 		subscribers: make(map[string][]*subscription),
 	}
-}
-
-func (b *localBus) SetReactorProvider(rp ReactorProvider) {
-	b.reactorProvider = rp
 }
 
 func (b *localBus) Publish(topic string, msg types.Message) {
@@ -44,12 +33,9 @@ func (b *localBus) Publish(topic string, msg types.Message) {
 
 	if subscribers, ok := b.subscribers[topic]; ok {
 		for _, sub := range subscribers {
-			// This is a fire-and-forget, non-blocking send.
-			// If the subscriber's mailbox is full, the message is dropped.
-			select {
-			case sub.mailbox <- msg:
-			default:
-			}
+			// This is a blocking send. If the subscriber's mailbox is full,
+			// the publisher will block until there is space.
+			sub.mailbox <- msg
 		}
 	}
 }
@@ -92,38 +78,25 @@ func (b *localBus) Send(topic string, msg types.Message) error {
 	selectedSub := subs[0] // In a real scenario, use a better strategy
 	b.mu.RUnlock()
 
-	if b.reactorProvider == nil {
-		return errors.New("bus: reactor provider not set")
+	// Non-blocking send to the component's mailbox.
+	select {
+	case selectedSub.mailbox <- msg:
+		return nil
+	default:
+		return types.ErrBackpressure
 	}
-	reactor, found := b.reactorProvider.GetReactor(selectedSub.componentName)
-	if !found {
-		// This indicates a configuration error in the system.
-		return errors.New("bus: reactor not found for component: " + selectedSub.componentName)
-	}
-
-	// Execute the send on the recipient's reactor to ensure serial processing.
-	return reactor.Execute(func() {
-		// Non-blocking send to the component's mailbox.
-		select {
-		case selectedSub.mailbox <- msg:
-		default:
-			// The recipient's mailbox is full, we don't block the sender's reactor.
-			// The error from Execute (ErrBackpressure) will be propagated to the sender.
-		}
-	})
 }
 
 func (b *localBus) Request(ctx context.Context, topic string, msg types.Message) (types.Message, error) {
 	replyTopic := newReplyTopic()
 	msg.ReplyTo = replyTopic
+	msg.CorrelationID = uuid.New().String()
 
 	replyMailbox := make(types.Mailbox, 1)
-	// Reply subscriptions are not associated with a component reactor.
-	// The requester blocks on the reply channel directly.
-	if err := b.Subscribe(replyTopic, "", replyMailbox); err != nil {
+	if err := b.Subscribe(replyTopic, "requestor", replyMailbox); err != nil {
 		return types.Message{}, err
 	}
-	defer b.Unsubscribe(replyTopic, "", replyMailbox)
+	defer b.Unsubscribe(replyTopic, "requestor", replyMailbox)
 
 	if err := b.Send(topic, msg); err != nil {
 		return types.Message{}, err

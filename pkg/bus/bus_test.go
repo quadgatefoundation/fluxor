@@ -1,101 +1,74 @@
-package bus_test
+package bus
 
 import (
 	"context"
 	"testing"
-	"time"
 
-	"github.com/fluxor-io/fluxor/pkg/bus"
 	"github.com/fluxor-io/fluxor/pkg/types"
 )
 
 func TestBus(t *testing.T) {
-	b := bus.NewBus(10)
+	b := NewBus()
+	topic := "test.topic"
 
-	topic := "test-topic"
-	msg := types.NewMessage(topic, "hello")
+	// Test Subscribe and Publish
+	mbox1 := make(types.Mailbox, 1)
+	mbox2 := make(types.Mailbox, 1)
 
-	handler1 := make(types.Mailbox, 1)
-	handler2 := make(types.Mailbox, 1)
+	b.Subscribe(topic, "component1", mbox1)
+	b.Subscribe(topic, "component2", mbox2)
 
-	if err := b.Subscribe(topic, handler1); err != nil {
-		t.Fatalf("failed to subscribe handler1: %v", err)
-	}
-
-	if err := b.Subscribe(topic, handler2); err != nil {
-		t.Fatalf("failed to subscribe handler2: %v", err)
-	}
-
+	msg := types.Message{Topic: topic, Payload: "hello"}
 	b.Publish(topic, msg)
 
-	// Check if both handlers received the message
-	for i := 0; i < 2; i++ {
-		select {
-		case receivedMsg := <-handler1:
-			if receivedMsg.ID != msg.ID {
-				t.Errorf("handler1 received wrong message ID: got %s, want %s", receivedMsg.ID, msg.ID)
-			}
-		case receivedMsg := <-handler2:
-			if receivedMsg.ID != msg.ID {
-				t.Errorf("handler2 received wrong message ID: got %s, want %s", receivedMsg.ID, msg.ID)
-			}
-		default:
-			t.Fatal("expected a message but got none")
-		}
+	receivedMsg1 := <-mbox1
+	if receivedMsg1.Payload != "hello" {
+		t.Errorf("mbox1 expected 'hello', got %s", receivedMsg1.Payload)
 	}
 
-	if err := b.Unsubscribe(topic, handler1); err != nil {
-		t.Fatalf("failed to unsubscribe handler1: %v", err)
+	receivedMsg2 := <-mbox2
+	if receivedMsg2.Payload != "hello" {
+		t.Errorf("mbox2 expected 'hello', got %s", receivedMsg2.Payload)
 	}
 
+	// Test Unsubscribe
+	b.Unsubscribe(topic, "component1", mbox1)
 	b.Publish(topic, msg)
 
-	// Check if only handler2 received the message
 	select {
-	case <-handler1:
-		t.Fatal("handler1 received message after unsubscribe")
-	case receivedMsg := <-handler2:
-		if receivedMsg.ID != msg.ID {
-			t.Errorf("handler2 received wrong message ID: got %s, want %s", receivedMsg.ID, msg.ID)
-		}
+	case <-mbox1:
+		t.Error("mbox1 should not receive message after unsubscribe")
 	default:
-		t.Fatal("expected a message but got none")
+	}
+
+	receivedMsg2 = <-mbox2
+	if receivedMsg2.Payload != "hello" {
+		t.Errorf("mbox2 expected 'hello', got %s", receivedMsg2.Payload)
 	}
 }
 
-func TestRequest(t *testing.T) {
-	b := bus.NewBus(10)
+func TestBus_RequestReply(t *testing.T) {
+	b := NewBus()
+	topic := "test.request"
 
-	topic := "test-request-topic"
-	requestMsg := types.NewMessage(topic, "request")
-
-	// Create a handler that will reply to the request
-	handler := make(types.Mailbox, 1)
-	if err := b.Subscribe(topic, handler); err != nil {
-		t.Fatalf("failed to subscribe handler: %v", err)
-	}
+	// Create a responder
+	mbox := make(types.Mailbox, 1)
+	b.Subscribe(topic, "responder", mbox)
 
 	go func() {
-		for msg := range handler {
-			replyMsg := types.NewMessage(msg.ReplyTo, "response")
-			replyMsg.CorrelationID = msg.ID
-			b.Publish(msg.ReplyTo, replyMsg)
-		}
+		req := <-mbox
+		reply := types.Message{Topic: req.ReplyTo, Payload: "Re: " + req.Payload.(string), CorrelationID: req.CorrelationID}
+		b.Send(req.ReplyTo, reply)
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
-
-	reply, err := b.Request(ctx, topic, requestMsg)
+	// Send a request
+	req := types.Message{Payload: "ping"}
+	resp, err := b.Request(context.Background(), topic, req)
 	if err != nil {
-		t.Fatalf("failed to make request: %v", err)
+		t.Fatalf("Request failed: %v", err)
 	}
 
-	if reply.CorrelationID != requestMsg.ID {
-		t.Errorf("unexpected correlation ID. got %q, want %q", reply.CorrelationID, requestMsg.ID)
-	}
-
-	if reply.Payload != "response" {
-		t.Errorf("unexpected payload. got %q, want %q", reply.Payload, "response")
+	if resp.Payload != "Re: ping" {
+		t.Errorf("Expected 'Re: ping', got %s", resp.Payload)
 	}
 }

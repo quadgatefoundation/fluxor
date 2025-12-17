@@ -1,70 +1,80 @@
-package reactor_test
+package reactor
 
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/fluxor-io/fluxor/pkg/reactor"
 )
 
 func TestReactor_SequentialExecution(t *testing.T) {
-	r := reactor.NewReactor("test", 10)
-	r.Start(context.Background(), nil)
-	defer r.Stop(context.Background())
+	reactor := New(10)
+	reactor.Start()
+	defer reactor.Stop(context.Background())
 
-	var counter int32
+	var result []int
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(5)
 
-	// Submit two events that will run concurrently if not for the reactor.
-	r.Execute(func() {
-		defer wg.Done()
-		atomic.AddInt32(&counter, 1)
-		time.Sleep(10 * time.Millisecond)
-		atomic.AddInt32(&counter, 1)
-	})
-	r.Execute(func() {
-		defer wg.Done()
-		// If the reactor is working, the counter should be 2 when this function is called.
-		if atomic.LoadInt32(&counter) != 2 {
-			t.Errorf("Expected counter to be 2, but got %d", atomic.LoadInt32(&counter))
-		}
-	})
-
-	wg.Wait()
-}
-
-func TestReactor_Stop(t *testing.T) {
-	r := reactor.NewReactor("test", 10)
-	r.Start(context.Background(), nil)
-
-	var counter int32
 	for i := 0; i < 5; i++ {
-		r.Execute(func() {
-			atomic.AddInt32(&counter, 1)
-			time.Sleep(10 * time.Millisecond)
+		val := i
+		reactor.Post(func() {
+			result = append(result, val)
+			wg.Done()
 		})
 	}
 
-	// Stop the reactor and wait for all events to be processed.
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	r.Stop(ctx)
+	wg.Wait()
 
-	if atomic.LoadInt32(&counter) != 5 {
-			t.Errorf("Expected counter to be 5, but got %d", atomic.LoadInt32(&counter))
+	if len(result) != 5 {
+		t.Fatalf("Expected result length 5, got %d", len(result))
 	}
 
-	// Submitting to a stopped reactor should still work, but the event will not be processed.
-	r.Execute(func() {
-		atomic.AddInt32(&counter, 1)
-	})
+	for i, v := range result {
+		if v != i {
+			t.Errorf("Expected result[%d] to be %d, got %d", i, i, v)
+		}
+	}
+}
 
-	// The counter should not have been incremented.
-	if atomic.LoadInt32(&counter) != 5 {
-			t.Errorf("Expected counter to remain 5, but got %d", atomic.LoadInt32(&counter))
+func TestReactor_Backpressure(t *testing.T) {
+	reactor := New(1)
+	reactor.Start()
+	defer reactor.Stop(context.Background())
+
+	blocker := make(chan struct{})
+
+	// Post a task that blocks
+	err := reactor.Post(func() {
+		<-blocker
+	})
+	if err != nil {
+		t.Fatalf("Post should not have failed: %v", err)
+	}
+
+	// Post another task, which should fail with ErrBackpressure
+	err = reactor.Post(func() {})
+	if err != ErrBackpressure {
+		t.Fatalf("Expected ErrBackpressure, got %v", err)
+	}
+
+	// Unblock the first task
+	close(blocker)
+}
+
+func TestReactor_Stop(t *testing.T) {
+	reactor := New(1)
+	reactor.Start()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := reactor.Stop(ctx); err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+
+	err := reactor.Post(func() {})
+	if err != ErrStopped {
+		t.Fatalf("Expected ErrStopped, got %v", err)
 	}
 }

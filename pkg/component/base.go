@@ -3,9 +3,7 @@ package component
 import (
 	"context"
 	"sync"
-	"sync/atomic"
-
-	"github.com/fluxor-io/fluxor/pkg/bus"
+	"github.com/fluxor-io/fluxor/pkg/types"
 )
 
 // Base is a helper struct that provides a robust implementation of the Component interface.
@@ -13,49 +11,27 @@ import (
 // and goroutine supervision.
 type Base struct {
 	wg         sync.WaitGroup
-	running    uint32 // atomic
 	stopCtx    context.Context
 	stopCancel context.CancelFunc
 }
 
-// Start is called by the runtime to start the component.
-// This implementation calls the OnStart hook.
-// It is not intended to be overridden by embedding components.
-func (b *Base) Start(ctx context.Context, bus bus.Bus) error {
-	if !atomic.CompareAndSwapUint32(&b.running, 0, 1) {
-		// Already running
-		return nil
-	}
-	b.stopCtx, b.stopCancel = context.WithCancel(context.Background())
-	b.OnStart(ctx, bus)
-	return nil
-}
-
-// Stop is called by the runtime to stop the component.
-// This implementation calls the OnStop hook and then waits for all supervised
-// goroutines to complete.
-// It is not intended to be overridden by embedding components.
-func (b *Base) Stop(ctx context.Context) error {
-	if !atomic.CompareAndSwapUint32(&b.running, 1, 0) {
-		// Already stopped
-		return nil
-	}
-	b.stopCancel()
-	b.OnStop(ctx)
-	b.wg.Wait()
-	return nil
-}
 
 // OnStart is a lifecycle hook that is called when the component is started.
 // Components that embed Base can implement this method to perform their own startup logic.
-func (b *Base) OnStart(ctx context.Context, bus bus.Bus) {
+func (b *Base) OnStart(ctx context.Context, bus types.Bus) error {
+	b.stopCtx, b.stopCancel = context.WithCancel(context.Background())
 	// By default, do nothing.
+	return nil
 }
 
 // OnStop is a lifecycle hook that is called when the component is stopped.
 // Components that embed Base can implement this method to perform their own shutdown logic.
-func (b *Base) OnStop(ctx context.Context) {
-	// By default, do nothing.
+func (b *Base) OnStop(ctx context.Context) error {
+	if b.stopCancel != nil {
+		b.stopCancel()
+	}
+	b.wg.Wait()
+	return nil
 }
 
 // Go starts a new goroutine that is supervised by the component.
@@ -64,6 +40,8 @@ func (b *Base) Go(f func(ctx context.Context)) {
 	b.wg.Add(1)
 	go func() {
 		defer b.wg.Done()
-		f(b.stopCtx)
+		if b.stopCtx != nil {
+			f(b.stopCtx)
+		}
 	}()
 }

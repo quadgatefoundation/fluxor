@@ -2,37 +2,49 @@ package main
 
 import (
 	"context"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/fluxor-io/fluxor/pkg/bus"
-	"github.com/fluxor-io/fluxor/pkg/inspector"
+	"github.com/fluxor-io/fluxor/pkg/component"
 	"github.com/fluxor-io/fluxor/pkg/runtime"
+	"github.com/fluxor-io/fluxor/pkg/types"
 )
 
 func main() {
 	// Create a new runtime.
-	opts := runtime.NewRuntimeOptions{
-		NumReactors: 4,
+	opts := runtime.Options{
 		MailboxSize: 1024,
 		NumWorkers:  8,
 		QueueSize:   1024,
 	}
-	b := bus.NewBus(1024)
-	rt := runtime.NewRuntime(opts, b)
+	rt := runtime.NewRuntime(opts)
 
 	// Start the runtime.
-	if err := rt.Start(); err != nil {
+	if err := rt.Start(context.Background()); err != nil {
 		panic(err)
 	}
 
-	// Create and deploy the inspector.
-	inspector := inspector.NewInspector(":8080", rt)
-	if err := rt.Deploy(context.Background(), inspector); err != nil {
+	// Create and deploy the Gemini component.
+	gemini := &component.Gemini{}
+	if err := rt.Deploy(context.Background(), gemini); err != nil {
 		panic(err)
 	}
+
+	// Send a prompt to the Gemini component and wait for the response.
+	go func() {
+		time.Sleep(3 * time.Second) // Wait for the component to start
+		prompt := "Tell me a story about a brave robot."
+		log.Printf("Sending prompt: %s", prompt)
+		resp, err := rt.Bus().Request(context.Background(), "/gemini/generate", types.Message{Payload: prompt})
+		if err != nil {
+			log.Printf("Error sending prompt: %v", err)
+			return
+		}
+		log.Printf("Response: %s", resp.Payload)
+	}()
 
 	// Wait for a signal to shut down.
 	stop := make(chan os.Signal, 1)

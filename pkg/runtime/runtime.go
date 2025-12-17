@@ -29,24 +29,28 @@ type Options struct {
 	QueueSize   int
 }
 
+// Status represents a snapshot of the runtime's state.
+type Status struct {
+	State      string
+	Components []string
+	Reactors   []string
+}
+
 type Runtime struct {
-	bus         bus.Bus
+	bus         types.Bus
 	state       uint32
 	comps       map[string]types.Component
 	mu          sync.RWMutex
-	reactors    *bus.ReactorStore
+	reactors    map[string]*reactor.Reactor
 	workerPool  *worker.WorkerPool
 	mailboxSize int
 }
 
 func NewRuntime(opts Options) *Runtime {
-	busImpl := bus.NewBus()
-	reactors := bus.NewReactorStore()
-	busImpl.SetReactorProvider(reactors)
 	return &Runtime{
-		bus:         busImpl,
+		bus:         bus.NewBus(),
 		comps:       make(map[string]types.Component),
-		reactors:    reactors,
+		reactors:    make(map[string]*reactor.Reactor),
 		workerPool:  worker.NewWorkerPool(opts.NumWorkers, opts.QueueSize),
 		mailboxSize: opts.MailboxSize,
 	}
@@ -61,13 +65,18 @@ func (r *Runtime) Deploy(ctx context.Context, comp types.Component) error {
 	}
 
 	// Each component gets its own reactor, enforcing the actor model.
-	compReactor := reactor.NewReactor(name, r.mailboxSize)
-	r.reactors.AddReactor(name, compReactor)
+	compReactor := reactor.New(r.mailboxSize)
+	r.reactors[name] = compReactor
 	r.comps[name] = comp
 
 	if atomic.LoadUint32(&r.state) == runtimeStateStarted {
 		// If the runtime is already running, start the new component immediately.
-		return compReactor.OnStart(ctx, r.bus)
+		compReactor.Start()
+		go func() {
+			if err := comp.OnStart(ctx, r.bus); err != nil {
+				// A real implementation should have a better error handling strategy
+			}
+		}()
 	}
 
 	return nil
@@ -82,12 +91,8 @@ func (r *Runtime) Start(ctx context.Context) error {
 
 	r.mu.RLock()
 	for name, comp := range r.comps {
-		reactor, _ := r.reactors.GetReactor(name)
-		if err := reactor.OnStart(ctx, r.bus); err != nil {
-			// In a real-world scenario, we might want to stop already started reactors.
-			r.mu.RUnlock()
-			return err
-		}
+		compReactor := r.reactors[name]
+		compReactor.Start()
 		if err := comp.OnStart(ctx, r.bus); err != nil {
 			r.mu.RUnlock()
 			return err
@@ -111,8 +116,7 @@ func (r *Runtime) Stop(ctx context.Context) error {
 		go func(name string, comp types.Component) {
 			defer wg.Done()
 			comp.OnStop(ctx) // Errors are logged within the component.
-			reactor, _ := r.reactors.GetReactor(name)
-			reactor.OnStop(ctx)
+			r.reactors[name].Stop(ctx)
 		}(name, comp)
 	}
 	wg.Wait()
@@ -122,6 +126,35 @@ func (r *Runtime) Stop(ctx context.Context) error {
 
 	atomic.StoreUint32(&r.state, runtimeStateStopped)
 	return nil
+}
+
+func (r *Runtime) Status() Status {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	stateMap := map[uint32]string{
+		runtimeStateIdle:     "Idle",
+		runtimeStateStarting: "Starting",
+		runtimeStateStarted:  "Started",
+		runtimeStateStopping: "Stopping",
+		runtimeStateStopped:  "Stopped",
+	}
+
+	comps := make([]string, 0, len(r.comps))
+	for name := range r.comps {
+		comps = append(comps, name)
+	}
+
+	var reactors []string
+	for name := range r.reactors {
+		reactors = append(reactors, name)
+	}
+
+	return Status{
+		State:      stateMap[atomic.LoadUint32(&r.state)],
+		Components: comps,
+		Reactors:   reactors,
+	}
 }
 
 func (r *Runtime) Bus() types.Bus {
