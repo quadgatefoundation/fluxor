@@ -1,6 +1,11 @@
 package types
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+var ErrBackpressure = errors.New("backpressure: mailbox is full")
 
 // Message represents a message passed through the event bus.
 type Message struct {
@@ -21,8 +26,8 @@ type Component interface {
 // Bus is the interface for the event bus.
 type Bus interface {
 	Publish(topic string, msg Message)
-	Subscribe(topic string, handler Mailbox) error
-	Unsubscribe(topic string, handler Mailbox) error
+	Subscribe(topic, componentName string, handler Mailbox) error
+	Unsubscribe(topic, componentName string, handler Mailbox) error
 
 	Send(topic string, msg Message) error
 	Request(ctx context.Context, topic string, msg Message) (Message, error)

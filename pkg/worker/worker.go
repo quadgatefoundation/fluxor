@@ -4,12 +4,11 @@ import (
 	"context"
 	"errors"
 	"sync"
+
+	"github.com/fluxor-io/fluxor/pkg/types"
 )
 
-var (
-	ErrWorkerPoolClosed = errors.New("worker pool is closed")
-	ErrNoWorkers        = errors.New("worker pool has no workers")
-)
+var ErrWorkerPoolClosed = errors.New("worker pool is closed")
 
 // Job represents a task to be executed by a worker.
 type Job func()
@@ -51,8 +50,8 @@ func (p *WorkerPool) Start() {
 
 // Stop gracefully stops the worker pool, waiting for all active jobs to complete.
 func (p *WorkerPool) Stop(ctx context.Context) {
-	close(p.jobs) // Stop accepting new jobs
 	close(p.stop)
+	close(p.jobs) // Stop accepting new jobs
 
 	done := make(chan struct{})
 	go func() {
@@ -71,27 +70,28 @@ func (p *WorkerPool) Stop(ctx context.Context) {
 // run is the worker's execution loop.
 func (p *WorkerPool) run() {
 	defer p.wg.Done()
-	for {
-		select {
-		case job, ok := <-p.jobs:
-			if !ok {
-				return // jobs channel closed
-			}
+	for job := range p.jobs {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Log the panic from the job
+				}
+			}()
 			job()
-		case <-p.stop:
-			return
-		}
+		}()
 	}
 }
 
 // Submit sends a job to the worker pool for execution.
-// It returns ErrWorkerPoolClosed if the pool is closed.
+// It returns types.ErrBackpressure if the job queue is full.
 func (p *WorkerPool) Submit(job Job) error {
 	select {
 	case p.jobs <- job:
 		return nil
 	case <-p.stop:
 		return ErrWorkerPoolClosed
+	default:
+		return types.ErrBackpressure
 	}
 }
 
