@@ -55,7 +55,9 @@ func (r *fastRouter) ServeFastHTTP(ctx *FastRequestContext) {
 
 			// Execute handler
 			if err := handler(ctx); err != nil {
+				// Log error with request ID for tracing
 				ctx.Error(err.Error(), fasthttp.StatusInternalServerError)
+				// Error will be counted in processRequest
 			}
 			return
 		}

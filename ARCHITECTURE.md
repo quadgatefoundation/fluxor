@@ -18,8 +18,6 @@
 
 ## 2. Update ARCHITECTURE.md - Overview Section
 
-Replace lines 18-36 with:
-
 ## Overview
 
 Fluxor is a **reactive framework for building** applications in Go, inspired by Vert.x, that provides:
@@ -178,6 +176,8 @@ type EventBus interface {
 - **Mailbox abstraction**: Uses `concurrency.Mailbox` to hide channel operations
 - **Bounded mailboxes**: Prevents unbounded memory growth (hides bounded channels)
 - **Non-blocking**: Message delivery is non-blocking where possible (hides `select` with `default`)
+- **Executor-based processing**: Uses `concurrency.Executor` for message processing (hides goroutines)
+- **Logging**: All errors and panics are logged using Logger interface
 
 **Message Flow**:
 ```
@@ -546,7 +546,7 @@ Fluxor abstracts Go's concurrency primitives (goroutines, channels, `select` sta
 
 ### Goroutine Usage (Hidden Behind Abstractions)
 
-1. **EventBus Consumers**: Use Mailbox abstraction (hides channels)
+1. **EventBus Consumers**: Use Executor abstraction (hides goroutines) - processes messages via Executor
 2. **HTTP Workers**: Use Executor abstraction (hides goroutine pool)
 3. **Runtime Tasks**: Use Task/Executor pattern (hides goroutine creation)
 4. **Verticle Lifecycle**: Use Executor for async operations (hides goroutines)
@@ -578,7 +578,7 @@ Fluxor abstracts Go's concurrency primitives (goroutines, channels, `select` sta
 
 1. **Immediate Return**: Errors returned immediately, not deferred
 2. **Error Wrapping**: Errors include context for debugging
-3. **Panic Recovery**: Panics caught and re-panicked with context
+3. **Panic Recovery**: Panics caught and isolated (logged, not re-panicked) - maintains system stability
 
 ### Fail-Fast Mechanisms
 

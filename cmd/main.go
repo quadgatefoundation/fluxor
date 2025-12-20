@@ -95,6 +95,31 @@ func setupApplication(deps map[reflect.Type]interface{}) error {
 		})
 	})
 
+	// Health check endpoint
+	router.GETFast("/health", func(ctx *web.FastRequestContext) error {
+		return ctx.JSON(200, map[string]interface{}{
+			"status":    "healthy",
+			"service":   "fluxor",
+			"timestamp": time.Now().Unix(),
+		})
+	})
+
+	// Readiness check endpoint
+	router.GETFast("/ready", func(ctx *web.FastRequestContext) error {
+		metrics := server.Metrics()
+		// Consider ready if queue utilization is below 90%
+		ready := metrics.QueueUtilization < 90.0 && metrics.CCUUtilization < 90.0
+		statusCode := 200
+		if !ready {
+			statusCode = 503
+		}
+		return ctx.JSON(statusCode, map[string]interface{}{
+			"ready":             ready,
+			"queue_utilization": metrics.QueueUtilization,
+			"ccu_utilization":   metrics.CCUUtilization,
+		})
+	})
+
 	// Metrics endpoint - shows backpressure and CCU metrics
 	router.GETFast("/api/metrics", func(ctx *web.FastRequestContext) error {
 		metrics := server.Metrics()
@@ -108,6 +133,10 @@ func setupApplication(deps map[reflect.Type]interface{}) error {
 			"current_ccu":         metrics.CurrentCCU,
 			"ccu_utilization":     fmt.Sprintf("%.2f%%", metrics.CCUUtilization),
 			"backpressure_active": metrics.CCUUtilization >= 100.0,
+			"total_requests":      metrics.TotalRequests,
+			"successful_requests": metrics.SuccessfulRequests,
+			"error_requests":      metrics.ErrorRequests,
+			"request_id":          ctx.RequestID(),
 		})
 	})
 
