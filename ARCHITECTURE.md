@@ -18,8 +18,6 @@
 
 ## 2. Update ARCHITECTURE.md - Overview Section
 
-Replace lines 18-36 with:
-
 ## Overview
 
 Fluxor is a **reactive framework for building** applications in Go, inspired by Vert.x, that provides:
