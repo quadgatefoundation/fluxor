@@ -15,18 +15,22 @@ import (
 // FastHTTPServer implements Server using fasthttp for high performance
 // Uses Executor and Mailbox abstractions to hide Go concurrency primitives
 type FastHTTPServer struct {
-	vertx       core.Vertx
-	router      *fastRouter
-	server      *fasthttp.Server
-	addr        string
-	mu          sync.RWMutex
-	requestMailbox concurrency.Mailbox // Abstracted: hides chan *fasthttp.RequestCtx
-	executor    concurrency.Executor   // Abstracted: hides goroutine pool
-	maxQueue    int
-	workers     int
+	vertx          core.Vertx
+	router         *fastRouter
+	server         *fasthttp.Server
+	addr           string
+	mu             sync.RWMutex
+	requestMailbox concurrency.Mailbox  // Abstracted: hides chan *fasthttp.RequestCtx
+	executor       concurrency.Executor // Abstracted: hides goroutine pool
+	maxQueue       int
+	workers        int
+	logger         core.Logger // Logger for error messages
 	// Metrics for monitoring
-	queuedRequests   int64 // Atomic counter for queued requests
-	rejectedRequests int64 // Atomic counter for rejected requests (503)
+	queuedRequests     int64 // Atomic counter for queued requests
+	rejectedRequests   int64 // Atomic counter for rejected requests (503)
+	totalRequests      int64 // Atomic counter for total requests
+	successfulRequests int64 // Atomic counter for successful requests (200-299)
+	errorRequests      int64 // Atomic counter for error requests (500-599)
 	// Backpressure controller for CCU-based limiting
 	backpressure *BackpressureController
 }
@@ -170,6 +174,7 @@ func NewFastHTTPServer(vertx core.Vertx, config *FastHTTPServerConfig) *FastHTTP
 		executor:       executor,       // Abstracted: hides goroutines
 		maxQueue:       config.MaxQueue,
 		workers:        config.Workers,
+		logger:         core.NewDefaultLogger(),
 		// Initialize backpressure controller with normal capacity
 		// This ensures 60% utilization under normal load
 		// Reset interval: 60 seconds (for metrics)
@@ -231,28 +236,39 @@ func (s *FastHTTPServer) FastRouter() *fastRouter {
 func (s *FastHTTPServer) Metrics() ServerMetrics {
 	bpMetrics := s.backpressure.GetMetrics()
 	normalCapacity := int(bpMetrics.NormalCapacity)
+	queued := atomic.LoadInt64(&s.queuedRequests)
+	queueUtil := float64(queued) / float64(s.maxQueue) * 100
+	if queueUtil > 100.0 {
+		queueUtil = 100.0
+	}
 	return ServerMetrics{
-		QueuedRequests:   atomic.LoadInt64(&s.queuedRequests),
-		RejectedRequests: atomic.LoadInt64(&s.rejectedRequests),
-		QueueCapacity:    s.maxQueue,
-		Workers:          s.workers,
-		QueueUtilization: float64(atomic.LoadInt64(&s.queuedRequests)) / float64(s.maxQueue) * 100,
-		NormalCCU:        normalCapacity, // Normal capacity (target utilization, e.g., 60%)
-		CurrentCCU:       int(bpMetrics.CurrentLoad),
-		CCUUtilization:   bpMetrics.Utilization, // Utilization relative to normal capacity
+		QueuedRequests:     queued,
+		RejectedRequests:   atomic.LoadInt64(&s.rejectedRequests),
+		QueueCapacity:      s.maxQueue,
+		Workers:            s.workers,
+		QueueUtilization:   queueUtil,
+		NormalCCU:          normalCapacity, // Normal capacity (target utilization, e.g., 60%)
+		CurrentCCU:         int(bpMetrics.CurrentLoad),
+		CCUUtilization:     bpMetrics.Utilization, // Utilization relative to normal capacity
+		TotalRequests:      atomic.LoadInt64(&s.totalRequests),
+		SuccessfulRequests: atomic.LoadInt64(&s.successfulRequests),
+		ErrorRequests:      atomic.LoadInt64(&s.errorRequests),
 	}
 }
 
 // ServerMetrics provides server performance metrics
 type ServerMetrics struct {
-	QueuedRequests   int64   // Current queued requests
-	RejectedRequests int64   // Total rejected requests (503)
-	QueueCapacity    int     // Maximum queue capacity
-	Workers          int     // Number of worker goroutines
-	QueueUtilization float64 // Queue utilization percentage
-	NormalCCU        int     // Normal CCU capacity (target utilization, e.g., 60%)
-	CurrentCCU       int     // Current CCU load
-	CCUUtilization   float64 // CCU utilization percentage (relative to normal capacity)
+	QueuedRequests     int64   // Current queued requests
+	RejectedRequests   int64   // Total rejected requests (503)
+	QueueCapacity      int     // Maximum queue capacity
+	Workers            int     // Number of worker goroutines
+	QueueUtilization   float64 // Queue utilization percentage
+	NormalCCU          int     // Normal CCU capacity (target utilization, e.g., 60%)
+	CurrentCCU         int     // Current CCU load
+	CCUUtilization     float64 // CCU utilization percentage (relative to normal capacity)
+	TotalRequests      int64   // Total requests processed (successful + rejected)
+	SuccessfulRequests int64   // Total successful requests (200-299)
+	ErrorRequests      int64   // Total error requests (500-599)
 }
 
 // handleRequest is the main request handler - non-blocking, queues to workers
@@ -310,7 +326,7 @@ func (s *FastHTTPServer) startRequestWorkers() {
 		)
 		if err := s.executor.Submit(task); err != nil {
 			// Log error but continue
-			_ = fmt.Errorf("failed to start worker %d: %v", i, err)
+			s.logger.Errorf("failed to start worker %d: %v", i, err)
 		}
 	}
 }
@@ -322,8 +338,7 @@ func (s *FastHTTPServer) processRequestFromMailbox(ctx context.Context) error {
 	defer func() {
 		if r := recover(); r != nil {
 			// Log panic but don't re-panic to prevent system crash
-			// In production, this would be logged and monitored
-			_ = fmt.Errorf("panic in worker (isolated): %v", r)
+			s.logger.Errorf("panic in worker (isolated): %v", r)
 		}
 	}()
 
@@ -354,9 +369,17 @@ func (s *FastHTTPServer) processRequestFromMailbox(ctx context.Context) error {
 				if r := recover(); r != nil {
 					// Handler panic: return 500 error instead of crashing
 					// Panic isolation: one request panic doesn't crash system
+					// Note: reqCtx here is *fasthttp.RequestCtx, not *FastRequestContext
+					// We need to get request ID from the FastRequestContext created in processRequest
 					reqCtx.Error("Internal Server Error", fasthttp.StatusInternalServerError)
 					reqCtx.SetContentType("application/json")
-					reqCtx.WriteString(`{"error":"handler_panic","message":"Request handler failed"}`)
+					// Extract request ID from header if available
+					requestID := string(reqCtx.Request.Header.Peek("X-Request-ID"))
+					if requestID == "" {
+						requestID = "unknown"
+					}
+					s.logger.Errorf("handler panic (request_id=%s): %v", requestID, r)
+					reqCtx.WriteString(fmt.Sprintf(`{"error":"handler_panic","message":"Request handler failed","request_id":"%s"}`, requestID))
 				}
 			}()
 
@@ -378,16 +401,37 @@ func (s *FastHTTPServer) processRequest(ctx *fasthttp.RequestCtx) {
 		panic("router cannot be nil")
 	}
 
+	// Generate or extract request ID from headers
+	requestID := string(ctx.Request.Header.Peek("X-Request-ID"))
+	if requestID == "" {
+		requestID = core.GenerateRequestID()
+	}
+
 	// Create request context with Vertx
 	reqCtx := &FastRequestContext{
 		RequestCtx: ctx,
 		Vertx:      s.vertx,
 		EventBus:   s.vertx.EventBus(),
 		Params:     make(map[string]string),
+		requestID:  requestID,
 	}
+
+	// Set request ID in response header for tracing
+	ctx.Response.Header.Set("X-Request-ID", requestID)
+
+	// Track request metrics
+	atomic.AddInt64(&s.totalRequests, 1)
 
 	// Route request - errors are propagated immediately (fail-fast)
 	s.router.ServeFastHTTP(reqCtx)
+
+	// Track response status
+	statusCode := ctx.Response.StatusCode()
+	if statusCode >= 200 && statusCode < 300 {
+		atomic.AddInt64(&s.successfulRequests, 1)
+	} else if statusCode >= 500 {
+		atomic.AddInt64(&s.errorRequests, 1)
+	}
 }
 
 // FastRequestContext wraps fasthttp RequestCtx with Fluxor context
@@ -398,6 +442,7 @@ type FastRequestContext struct {
 	Params     map[string]string
 	data       map[string]interface{}
 	mu         sync.RWMutex
+	requestID  string // Request ID for tracing
 }
 
 // Set stores a value in the context
@@ -487,4 +532,18 @@ func (c *FastRequestContext) Path() []byte {
 // Error writes error response
 func (c *FastRequestContext) Error(msg string, statusCode int) {
 	c.RequestCtx.Error(msg, statusCode)
+}
+
+// RequestID returns the request ID for this request
+func (c *FastRequestContext) RequestID() string {
+	return c.requestID
+}
+
+// Context returns a context with request ID
+func (c *FastRequestContext) Context() context.Context {
+	ctx := context.Background()
+	if c.requestID != "" {
+		ctx = core.WithRequestID(ctx, c.requestID)
+	}
+	return ctx
 }

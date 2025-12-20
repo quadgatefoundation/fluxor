@@ -19,6 +19,7 @@ type defaultExecutor struct {
 	cancel        context.CancelFunc
 	mu            sync.RWMutex
 	closed        bool
+	logger        simpleLogger // Logger for error messages
 	
 	// Metrics (atomic for thread-safety)
 	queuedTasks    int64
@@ -58,6 +59,7 @@ func NewExecutor(ctx context.Context, config ExecutorConfig) Executor {
 		queueSize: config.QueueSize,
 		ctx:       ctx,
 		cancel:    cancel,
+		logger:    newDefaultSimpleLogger(),
 	}
 
 	// Start worker goroutines (hidden from public API)
@@ -89,7 +91,7 @@ func (e *defaultExecutor) worker(id int) {
 			// Execute task
 			if err := task.Execute(e.ctx); err != nil {
 				// Log error but continue processing
-				_ = fmt.Errorf("task %s failed: %v", task.Name(), err)
+				e.logger.Errorf("task %s failed: %v", task.Name(), err)
 			}
 			atomic.AddInt64(&e.completedTasks, 1)
 

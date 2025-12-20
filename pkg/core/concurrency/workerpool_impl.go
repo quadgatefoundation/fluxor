@@ -17,6 +17,7 @@ type defaultWorkerPool struct {
 	running  int32 // Atomic flag
 	ctx      context.Context
 	cancel   context.CancelFunc
+	logger   simpleLogger // Logger for error messages
 }
 
 // WorkerPoolConfig configures a WorkerPool
@@ -50,6 +51,7 @@ func NewWorkerPool(ctx context.Context, config WorkerPoolConfig) WorkerPool {
 		taskChan: make(chan Task, config.QueueSize), // Hidden: channel creation
 		ctx:      ctx,
 		cancel:   cancel,
+		logger:   newDefaultSimpleLogger(),
 	}
 }
 
@@ -87,7 +89,7 @@ func (wp *defaultWorkerPool) worker(id int) {
 
 			// Execute task
 			if err := task.Execute(wp.ctx); err != nil {
-				_ = fmt.Errorf("worker %d: task %s failed: %v", id, task.Name(), err)
+				wp.logger.Errorf("worker %d: task %s failed: %v", id, task.Name(), err)
 			}
 
 		case <-wp.ctx.Done():
