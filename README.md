@@ -326,6 +326,23 @@ func setupApplication(deps map[reflect.Type]interface{}) error {
 go get github.com/fluxorio/fluxor
 ```
 
+## Migration Guide
+
+New to Go? Coming from Java or Node.js? Check out our comprehensive migration guide:
+
+- **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** - Complete guide for Java/Node.js developers migrating to Go/Fluxor
+  - Side-by-side code comparisons
+  - Pattern mapping (Java → Go, Node.js → Go)
+  - Common pitfalls and solutions
+  - Step-by-step migration plan
+
+- **[DATABASE_POOLING.md](DATABASE_POOLING.md)** - Database connection pooling guide (HikariCP equivalent)
+  - Go's built-in connection pooling (`database/sql`)
+  - PostgreSQL optimized pooling (`pgxpool`)
+  - Fluxor integration examples
+  - Migration from HikariCP
+  - **Package `pkg/db`**: Ready-to-use connection pooling with Premium Pattern
+
 ## License
 
 MIT
