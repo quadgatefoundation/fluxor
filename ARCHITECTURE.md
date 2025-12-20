@@ -889,9 +889,60 @@ Metrics (atomic counters, minimal overhead)
 
 ## Extension Points
 
-### Custom Verticles
+### Premium Pattern: Base Classes
 
-Applications can create custom verticles:
+Fluxor provides **Premium Pattern** base classes following Java-style abstract base class patterns. These provide default implementations with hook methods for customization.
+
+**Available Base Classes**:
+- `BaseVerticle` - Abstract base for verticles with lifecycle management
+- `BaseService` - Abstract base for request-reply services
+- `BaseHandler` - Abstract base for message handlers
+- `BaseComponent` - Abstract base for reusable components
+
+**Benefits**:
+- Reduced boilerplate code
+- Consistent patterns across codebase
+- Built-in lifecycle management
+- Enterprise-grade abstractions
+
+See `pkg/core/BASE_CLASSES.md` for detailed documentation.
+
+### Custom Verticles (Premium Pattern)
+
+Applications can create custom verticles using the Premium Pattern:
+
+```go
+// Using Premium Pattern (BaseVerticle)
+type MyVerticle struct {
+    *core.BaseVerticle
+}
+
+// Override hook method (Template Method Pattern)
+func (v *MyVerticle) doStart(ctx core.FluxorContext) error {
+    consumer := v.Consumer("my.address") // BaseVerticle convenience method
+    consumer.Handler(func(ctx core.FluxorContext, msg core.Message) error {
+        // Handle message
+        return msg.Reply("processed")
+    })
+    return nil
+}
+
+// Optional: Override cleanup
+func (v *MyVerticle) doStop(ctx core.FluxorContext) error {
+    // Custom cleanup
+    return nil
+}
+
+// Create and deploy
+verticle := &MyVerticle{
+    BaseVerticle: core.NewBaseVerticle("my-verticle"),
+}
+vertx.DeployVerticle(verticle)
+```
+
+### Custom Verticles (Raw Interface)
+
+Applications can also implement the interface directly:
 
 ```go
 type MyVerticle struct{}
