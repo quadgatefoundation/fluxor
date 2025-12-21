@@ -6,17 +6,25 @@ import (
 	"github.com/fluxorio/fluxor/pkg/fx"
 )
 
+// HttpVerticle is a verticle that runs an HTTP server
+// Extends BaseVerticle for common lifecycle management
 type HttpVerticle struct {
-	port   string
-	router Router
-	server *http.Server
+	*core.BaseVerticle // Embed base verticle for lifecycle management
+	port               string
+	router             Router
+	server             *http.Server
 }
 
 func NewHttpVerticle(port string, router Router) *HttpVerticle {
-	return &HttpVerticle{port: port, router: router}
+	return &HttpVerticle{
+		BaseVerticle: core.NewBaseVerticle("http-verticle"),
+		port:         port,
+		router:       router,
+	}
 }
 
-func (v *HttpVerticle) OnStart(ctx core.FluxorContext) error {
+// doStart is called by BaseVerticle.Start() - implements hook method
+func (v *HttpVerticle) doStart(ctx core.FluxorContext) error {
 	logger := core.NewDefaultLogger()
 	logger.Info("HttpVerticle Listening", "port", v.port)
 
@@ -38,7 +46,10 @@ func (v *HttpVerticle) OnStart(ctx core.FluxorContext) error {
 	return nil
 }
 
-func (v *HttpVerticle) OnStop() error {
-	if v.server != nil { return v.server.Close() }
+// doStop is called by BaseVerticle.Stop() - implements hook method
+func (v *HttpVerticle) doStop(ctx core.FluxorContext) error {
+	if v.server != nil {
+		return v.server.Close()
+	}
 	return nil
 }
