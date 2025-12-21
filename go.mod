@@ -1,4 +1,4 @@
-module github.com/fluxor-io/fluxor
+module github.com/khangdcicloud/fluxor
 
 go 1.24
 

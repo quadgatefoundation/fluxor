@@ -5,39 +5,19 @@ import (
 	"log/slog"
 )
 
-// RuntimeRef is a read-only interface to the Runtime,
-// preventing reactors from calling dangerous methods like Shutdown().
-type RuntimeRef interface {
-	EventBus() *EventBus
-}
-
 type FluxorContext struct {
-	id      string         // Deployment ID (UUID)
-	config  map[string]any // Configuration map
-	runtime RuntimeRef     // Reference to parent runtime
-	stdCtx  context.Context
+	id     string
+	bus    *Bus
+	worker *WorkerPool
+	stdCtx context.Context
 }
 
-func NewFluxorContext(stdCtx context.Context, rt RuntimeRef, id string, conf map[string]any) *FluxorContext {
-	return &FluxorContext{
-		id:      id,
-		runtime: rt,
-		stdCtx:  stdCtx,
-		config:  conf,
-	}
+func NewFluxorContext(stdCtx context.Context, bus *Bus, wp *WorkerPool, id string) *FluxorContext {
+	return &FluxorContext{id: id, bus: bus, worker: wp, stdCtx: stdCtx}
 }
 
-// Accessors
 func (c *FluxorContext) ID() string             { return c.id }
+func (c *FluxorContext) Bus() *Bus              { return c.bus }
+func (c *FluxorContext) Worker() *WorkerPool    { return c.worker }
+func (c *FluxorContext) Log() *slog.Logger      { return slog.Default().With("id", c.id) }
 func (c *FluxorContext) Ctx() context.Context   { return c.stdCtx }
-func (c *FluxorContext) Config() map[string]any { return c.config }
-
-// Bus returns the event bus from the runtime.
-func (c *FluxorContext) Bus() *EventBus {
-	return c.runtime.EventBus()
-}
-
-// Log returns a structured logger with the deployment ID already added.
-func (c *FluxorContext) Log() *slog.Logger {
-	return slog.With("deploymentID", c.id)
-}

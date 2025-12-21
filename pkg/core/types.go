@@ -1,10 +1,7 @@
 package core
 
-// Reactor Interface Version 2
-type Reactor interface {
-	// OnStart nhận FluxorContext thay vì context thường
+// Component là đơn vị chạy của Fluxor (tương đương Verticle)
+type Component interface {
 	OnStart(ctx *FluxorContext) error
-	
-	// OnStop để dọn dẹp resource
 	OnStop() error
 }
