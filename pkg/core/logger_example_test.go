@@ -6,7 +6,9 @@ import (
 	"github.com/fluxorio/fluxor/pkg/core"
 )
 
-func ExampleLogger_WithFields() {
+// demoLoggerWithFields demonstrates adding structured fields to logs.
+// This is a documentation example, not a runnable test.
+func demoLoggerWithFields() {
 	logger := core.NewDefaultLogger()
 
 	// Add structured fields
@@ -20,7 +22,9 @@ func ExampleLogger_WithFields() {
 	loggerWithFields.Info("User logged in")
 }
 
-func ExampleLogger_WithContext() {
+// demoLoggerWithContext demonstrates logging with request context.
+// This is a documentation example, not a runnable test.
+func demoLoggerWithContext() {
 	logger := core.NewDefaultLogger()
 
 	// Create context with request ID
@@ -34,7 +38,9 @@ func ExampleLogger_WithContext() {
 	loggerWithContext.Info("Request processed")
 }
 
-func ExampleNewJSONLogger() {
+// demoNewJSONLogger demonstrates structured JSON logging.
+// This is a documentation example, not a runnable test.
+func demoNewJSONLogger() {
 	// Create JSON logger for structured logging
 	logger := core.NewJSONLogger()
 
@@ -48,7 +54,9 @@ func ExampleNewJSONLogger() {
 	loggerWithFields.WithContext(context.Background()).Info("Service started")
 }
 
-func ExampleLogger_enterpriseUsage() {
+// demoLoggerEnterpriseUsage demonstrates enterprise-grade logging patterns.
+// This is a documentation example, not a runnable test.
+func demoLoggerEnterpriseUsage() {
 	// Enterprise example: Structured logging with context
 	logger := core.NewJSONLogger()
 
@@ -75,7 +83,9 @@ func ExampleLogger_enterpriseUsage() {
 	}).Info("Request completed")
 }
 
-func ExampleLogger_errorLogging() {
+// demoLoggerErrorLogging demonstrates error logging with context.
+// This is a documentation example, not a runnable test.
+func demoLoggerErrorLogging() {
 	logger := core.NewDefaultLogger()
 
 	// Error logging with context
@@ -89,4 +99,11 @@ func ExampleLogger_errorLogging() {
 		"value":      "invalid-email",
 	}).Error("Validation failed")
 }
+
+// Ensure demo functions are used to avoid unused function warnings
+var _ = demoLoggerWithFields
+var _ = demoLoggerWithContext
+var _ = demoNewJSONLogger
+var _ = demoLoggerEnterpriseUsage
+var _ = demoLoggerErrorLogging
 
