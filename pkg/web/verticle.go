@@ -1,9 +1,10 @@
 package web
 
 import (
-	"net/http"
 	"github.com/fluxorio/fluxor/pkg/core"
 	"github.com/fluxorio/fluxor/pkg/fx"
+	"net/http"
+	"time"
 )
 
 // HttpVerticle is a verticle that runs an HTTP server
@@ -36,9 +37,13 @@ func (v *HttpVerticle) doStart(ctx core.FluxorContext) error {
 		}
 	}
 
-	v.server = &http.Server{Addr: ":" + v.port, Handler: http.HandlerFunc(handler)}
-	
-	go func() { 
+	v.server = &http.Server{
+		Addr:              ":" + v.port,
+		Handler:           http.HandlerFunc(handler),
+		ReadHeaderTimeout: 5 * time.Second, // mitigate Slowloris
+	}
+
+	go func() {
 		if err := v.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("Server crashed", "err", err)
 		}

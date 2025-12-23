@@ -62,11 +62,13 @@ func (c *DatabaseComponent) doStart(ctx core.FluxorContext) error {
 	// Notify via EventBus (Premium Pattern integration)
 	eventBus := c.EventBus()
 	if eventBus != nil {
-		eventBus.Publish("database.ready", map[string]interface{}{
+		if err := eventBus.Publish("database.ready", map[string]interface{}{
 			"component":      c.Name(),
 			"max_open_conns": c.config.MaxOpenConns,
 			"max_idle_conns": c.config.MaxIdleConns,
-		})
+		}); err != nil {
+			// Best-effort notification; ignore on error.
+		}
 	}
 
 	return nil

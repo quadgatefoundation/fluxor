@@ -14,32 +14,32 @@ import (
 type Logger interface {
 	// Error logs an error message
 	Error(args ...interface{})
-	
+
 	// Errorf logs a formatted error message
 	Errorf(format string, args ...interface{})
-	
+
 	// Warn logs a warning message
 	Warn(args ...interface{})
-	
+
 	// Warnf logs a formatted warning message
 	Warnf(format string, args ...interface{})
-	
+
 	// Info logs an informational message
 	Info(args ...interface{})
-	
+
 	// Infof logs a formatted informational message
 	Infof(format string, args ...interface{})
-	
+
 	// Debug logs a debug message
 	Debug(args ...interface{})
-	
+
 	// Debugf logs a formatted debug message
 	Debugf(format string, args ...interface{})
-	
+
 	// WithFields returns a new logger with structured fields
 	// This enables structured logging with key-value pairs
 	WithFields(fields map[string]interface{}) Logger
-	
+
 	// WithContext returns a new logger with context values
 	// Extracts request ID and other context values automatically
 	WithContext(ctx context.Context) Logger
@@ -116,17 +116,25 @@ func (l *defaultLogger) log(level string, logger *log.Logger, message string) {
 		}
 		jsonData, err := json.Marshal(entry)
 		if err == nil {
-			logger.Output(3, string(jsonData))
+			if oerr := logger.Output(3, string(jsonData)); oerr != nil {
+				// Best-effort logging; ignore on error.
+			}
 		} else {
 			// Fallback to plain text if JSON marshal fails
-			logger.Output(3, fmt.Sprintf("[%s] %s %v", level, message, l.fields))
+			if oerr := logger.Output(3, fmt.Sprintf("[%s] %s %v", level, message, l.fields)); oerr != nil {
+				// Best-effort logging; ignore on error.
+			}
 		}
 	} else {
 		// Plain text output with fields appended
 		if len(l.fields) > 0 {
-			logger.Output(3, fmt.Sprintf("%s %v", message, l.fields))
+			if oerr := logger.Output(3, fmt.Sprintf("%s %v", message, l.fields)); oerr != nil {
+				// Best-effort logging; ignore on error.
+			}
 		} else {
-			logger.Output(3, message)
+			if oerr := logger.Output(3, message); oerr != nil {
+				// Best-effort logging; ignore on error.
+			}
 		}
 	}
 }
@@ -197,17 +205,17 @@ func (l *defaultLogger) WithFields(fields map[string]interface{}) Logger {
 // Automatically extracts request ID and other context values
 func (l *defaultLogger) WithContext(ctx context.Context) Logger {
 	fields := make(map[string]interface{})
-	
+
 	// Extract request ID from context
 	if requestID := GetRequestID(ctx); requestID != "" {
 		fields["request_id"] = requestID
 	}
-	
+
 	// Copy existing fields
 	for k, v := range l.fields {
 		fields[k] = v
 	}
-	
+
 	return &defaultLogger{
 		errorLogger: l.errorLogger,
 		warnLogger:  l.warnLogger,
@@ -217,4 +225,3 @@ func (l *defaultLogger) WithContext(ctx context.Context) Logger {
 		fields:      fields,
 	}
 }
-

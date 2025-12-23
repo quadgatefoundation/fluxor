@@ -111,7 +111,9 @@ func JWT(config JWTConfig) web.FastMiddleware {
 			ctx.RequestCtx.Response.Header.Set("WWW-Authenticate", fmt.Sprintf(`%s realm="fluxor", error="invalid_token"`, authScheme))
 			ctx.RequestCtx.SetContentType("application/json")
 			// Do not reflect internal errors to the caller by default.
-			ctx.RequestCtx.WriteString(`{"error":"unauthorized","message":"invalid or missing token"}`)
+			if _, werr := ctx.RequestCtx.WriteString(`{"error":"unauthorized","message":"invalid or missing token"}`); werr != nil {
+				// Best-effort response write; ignore on error.
+			}
 			return nil
 		}
 	}

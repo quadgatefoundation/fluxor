@@ -202,7 +202,9 @@ func RateLimit(config RateLimitConfig) web.FastMiddleware {
 				// Default: return 429 Too Many Requests
 				ctx.RequestCtx.SetStatusCode(429)
 				ctx.RequestCtx.SetContentType("application/json")
-				ctx.RequestCtx.WriteString(`{"error":"rate_limit_exceeded","message":"Too many requests"}`)
+				if _, err := ctx.RequestCtx.WriteString(`{"error":"rate_limit_exceeded","message":"Too many requests"}`); err != nil {
+					// Best-effort response write; ignore on error.
+				}
 				return nil
 			}
 

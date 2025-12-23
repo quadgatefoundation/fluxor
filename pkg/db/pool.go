@@ -88,7 +88,9 @@ func NewPool(config PoolConfig) (*Pool, error) {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		if cerr := db.Close(); cerr != nil {
+			// Best-effort cleanup; ignore on error.
+		}
 		return nil, err
 	}
 

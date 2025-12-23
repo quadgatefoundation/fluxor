@@ -264,7 +264,7 @@ type EventBus interface {
 ```
 
 **Architecture Notes**:
-- **JSON-first**: All messages automatically encoded/decoded to JSON using Sonic (high-performance)
+- **JSON-first**: All messages are encoded/decoded to JSON via `core.JSONEncode/core.JSONDecode`
 - **Fail-fast**: Address and body validation before processing
 - **Mailbox abstraction**: Uses `concurrency.Mailbox` to hide channel operations
 - **Bounded mailboxes**: Prevents unbounded memory growth (hides bounded channels)
@@ -277,7 +277,7 @@ type EventBus interface {
 ```
 Publisher → EventBus → Consumer Mailbox → Handler
                 ↓
-         (Sonic JSON Encoding)
+         (JSON Encoding)
                 ↓
          (Request ID Propagation)
 ```
@@ -396,7 +396,7 @@ HTTP Request → Request ID Middleware (extract/generate ID)
                                       ↓
                               Router → Handler
                                       ↓
-                              JSON Response (Sonic encoding)
+                              JSON Response (JSON encoding)
                                       ↓
                               Response with X-Request-ID header
                                       ↓
@@ -439,7 +439,7 @@ type ServerMetrics struct {
   - Normal capacity: Operates at target utilization (e.g., 60% of max CCU)
   - Queue-based: Additional protection when queue is full
   - Returns 503 when capacity exceeded (fail-fast)
-- **JSON-first**: Default response format is JSON (using Sonic for encoding)
+- **JSON-first**: Default response format is JSON
 - **Non-blocking**: Request queuing is non-blocking
 - **Request ID tracking**: Automatic request ID generation/propagation via middleware
 - **Health endpoints**: Built-in `/health` and `/ready` endpoints
@@ -508,7 +508,7 @@ type FastHTTPServerConfig struct {
    ↓
 3. EventBus extracts request ID from context (if available)
    ↓
-4. EventBus encodes body to JSON using Sonic (if needed)
+4. EventBus encodes body to JSON (if needed)
    ↓
 5. EventBus creates Message with request ID
    ↓
@@ -562,7 +562,7 @@ type FastHTTPServerConfig struct {
    ↓
 7. Handler executes (can use EventBus, Vertx)
    ↓
-8. Handler returns JSON response (Sonic encoding)
+8. Handler returns JSON response (JSON encoding)
    ↓
 9. Response sent to client with X-Request-ID header
    ↓
@@ -582,7 +582,7 @@ EventBus.encodeBody()
     ↓
 JSONEncode() [fail-fast validation]
     ↓
-Sonic.Marshal() [JIT compilation, SIMD optimizations]
+json.Marshal() [standard library encoding]
     ↓
 JSON bytes ([]byte)
     ↓
@@ -765,7 +765,7 @@ func (eb *eventBus) Publish(address string, body interface{}) error {
 
 - **HTTP**: Designed for 100k+ RPS with CCU-based backpressure
 - **EventBus**: High-throughput message passing with Executor-based processing
-- **JSON**: High-performance encoding/decoding using Sonic
+- **JSON**: Encoding/decoding using Go standard library (swappable behind `core.JSONEncode/JSONDecode`)
   - Encoding: ~1289 ns/op (2x faster than standard library)
   - Decoding: ~1388 ns/op (3x faster than standard library)
   - Parallel encoding: ~173.6 ns/op under concurrent load
@@ -780,7 +780,7 @@ func (eb *eventBus) Publish(address string, body interface{}) error {
 ### Memory
 
 - **Bounded**: All queues and channels are bounded
-- **Sonic optimizations**: Internal buffer pooling and memory management
+- **JSON performance**: If you need faster JSON, swap the codec behind `core.JSONEncode/JSONDecode`
 - **Garbage collection**: Minimized allocations through pooling
 - **Request ID**: UUID strings (36 bytes per request ID)
 

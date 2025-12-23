@@ -289,7 +289,9 @@ func (s *FastHTTPServer) handleRequest(ctx *fasthttp.RequestCtx) {
 		atomic.AddInt64(&s.rejectedRequests, 1)
 		ctx.Error("Service Unavailable", fasthttp.StatusServiceUnavailable)
 		ctx.SetContentType("application/json")
-		ctx.WriteString(`{"error":"capacity_exceeded","message":"Server at normal capacity - backpressure applied","code":"BACKPRESSURE"}`)
+		if _, werr := ctx.WriteString(`{"error":"capacity_exceeded","message":"Server at normal capacity - backpressure applied","code":"BACKPRESSURE"}`); werr != nil {
+			// Best-effort response write; ignore on error.
+		}
 		return
 	}
 
@@ -302,7 +304,9 @@ func (s *FastHTTPServer) handleRequest(ctx *fasthttp.RequestCtx) {
 
 		ctx.Error("Service Unavailable", fasthttp.StatusServiceUnavailable)
 		ctx.SetContentType("application/json")
-		ctx.WriteString(`{"error":"queue_full","message":"Server overloaded - backpressure applied","code":"BACKPRESSURE"}`)
+		if _, werr := ctx.WriteString(`{"error":"queue_full","message":"Server overloaded - backpressure applied","code":"BACKPRESSURE"}`); werr != nil {
+			// Best-effort response write; ignore on error.
+		}
 		return
 	}
 
@@ -337,12 +341,12 @@ func (s *FastHTTPServer) startRequestWorkers() {
 func (s *FastHTTPServer) processRequestFromMailbox(ctx context.Context) error {
 	// Fail-fast: recover from panics to prevent system crash
 	// Panic isolation: one worker panic doesn't crash entire system
-		defer func() {
-			if r := recover(); r != nil {
-				// Log panic but don't re-panic to prevent system crash
-				s.Logger().Errorf("panic in worker (isolated): %v", r)
-			}
-		}()
+	defer func() {
+		if r := recover(); r != nil {
+			// Log panic but don't re-panic to prevent system crash
+			s.Logger().Errorf("panic in worker (isolated): %v", r)
+		}
+	}()
 
 	// Use Mailbox abstraction (hides channel receive and select statement)
 	for {
@@ -381,7 +385,9 @@ func (s *FastHTTPServer) processRequestFromMailbox(ctx context.Context) error {
 						requestID = "unknown"
 					}
 					s.Logger().Errorf("handler panic (request_id=%s): %v", requestID, r)
-					reqCtx.WriteString(fmt.Sprintf(`{"error":"handler_panic","message":"Request handler failed","request_id":"%s"}`, requestID))
+					if _, werr := reqCtx.WriteString(fmt.Sprintf(`{"error":"handler_panic","message":"Request handler failed","request_id":"%s"}`, requestID)); werr != nil {
+						// Best-effort response write; ignore on error.
+					}
 				}
 			}()
 
@@ -464,7 +470,9 @@ func (c *FastRequestContext) JSON(statusCode int, data interface{}) error {
 		return fmt.Errorf("json encode error: %w", err)
 	}
 
-	c.RequestCtx.Write(jsonData)
+	if _, werr := c.RequestCtx.Write(jsonData); werr != nil {
+		// Best-effort response write; ignore on error.
+	}
 	return nil
 }
 
@@ -488,7 +496,9 @@ func (c *FastRequestContext) BindJSON(v interface{}) error {
 func (c *FastRequestContext) Text(statusCode int, text string) error {
 	c.RequestCtx.SetStatusCode(statusCode)
 	c.RequestCtx.SetContentType("text/plain")
-	c.RequestCtx.WriteString(text)
+	if _, werr := c.RequestCtx.WriteString(text); werr != nil {
+		// Best-effort response write; ignore on error.
+	}
 	return nil
 }
 

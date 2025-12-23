@@ -28,7 +28,7 @@ func TestJSONEncode(t *testing.T) {
 }
 
 func TestJSONEncode_Pooling(t *testing.T) {
-	// Test that encoding works correctly with Sonic
+	// Test that encoding works correctly across multiple calls
 	data1 := map[string]string{"key1": "value1"}
 	data2 := map[string]int{"key2": 42}
 	

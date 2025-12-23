@@ -24,6 +24,7 @@ func newDefaultSimpleLogger() simpleLogger {
 }
 
 func (l *defaultSimpleLogger) Errorf(format string, args ...interface{}) {
-	l.logger.Output(3, fmt.Sprintf(format, args...))
+	if err := l.logger.Output(3, fmt.Sprintf(format, args...)); err != nil {
+		// Best-effort logging; ignore on error.
+	}
 }
-
