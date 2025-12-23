@@ -1081,6 +1081,31 @@ router.GETFast("/api/data", func(ctx *web.FastRequestContext) error {
 
 ---
 
+## Performance Benchmarks
+
+Fluxor has been extensively load tested to ensure production readiness.
+
+### Key Performance Metrics
+
+| Metric | Value |
+|--------|-------|
+| **Throughput** | 15,271 req/s |
+| **P95 Latency** | 11.7ms |
+| **P99 Latency** | ~30ms |
+| **Error Rate** | 0.00% |
+| **Max Concurrent Users** | 1,000+ |
+
+### Load Test Configuration
+
+- **Duration**: 90 seconds
+- **Virtual Users**: Ramping to 1,000
+- **Endpoints Tested**: `/health`, `/api/status`, `/api/echo` (heavy JSON)
+- **Test Tool**: k6
+
+For detailed performance tuning guidelines, see [PERFORMANCE.md](PERFORMANCE.md).
+
+---
+
 ## Future Enhancements
 
 1. **Scheduler Abstraction**: Task scheduling with delay/periodic execution
