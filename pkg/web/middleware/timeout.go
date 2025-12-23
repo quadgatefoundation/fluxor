@@ -27,9 +27,9 @@ type TimeoutConfig struct {
 // DefaultTimeoutConfig returns a default timeout configuration
 func DefaultTimeoutConfig(timeout time.Duration) TimeoutConfig {
 	return TimeoutConfig{
-		Timeout:  timeout,
-		Logger:   core.NewDefaultLogger(),
-		Message:  "Request timeout",
+		Timeout:   timeout,
+		Logger:    core.NewDefaultLogger(),
+		Message:   "Request timeout",
 		SkipPaths: []string{},
 	}
 }
@@ -97,10 +97,11 @@ func Timeout(config TimeoutConfig) web.FastMiddleware {
 
 				ctx.RequestCtx.SetStatusCode(504) // Gateway Timeout
 				ctx.RequestCtx.SetContentType("application/json")
-				ctx.RequestCtx.WriteString(`{"error":"timeout","message":"` + message + `","request_id":"` + ctx.RequestID() + `"}`)
+				if _, err := ctx.RequestCtx.WriteString(`{"error":"timeout","message":"` + message + `","request_id":"` + ctx.RequestID() + `"}`); err != nil {
+					// Best-effort response write; ignore on error.
+				}
 				return nil
 			}
 		}
 	}
 }
-

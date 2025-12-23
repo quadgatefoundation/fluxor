@@ -62,7 +62,9 @@ func APIKey(config APIKeyConfig) web.FastMiddleware {
 		onError = func(ctx *web.FastRequestContext, err error) error {
 			ctx.RequestCtx.SetStatusCode(401)
 			ctx.RequestCtx.SetContentType("application/json")
-			ctx.RequestCtx.WriteString(fmt.Sprintf(`{"error":"unauthorized","message":"%s"}`, err.Error()))
+			if _, werr := ctx.RequestCtx.WriteString(fmt.Sprintf(`{"error":"unauthorized","message":"%s"}`, err.Error())); werr != nil {
+				// Best-effort response write; ignore on error.
+			}
 			return nil
 		}
 	}
@@ -124,4 +126,3 @@ func SimpleAPIKeyValidator(validKeys map[string]map[string]interface{}) func(str
 		return claims, nil
 	}
 }
-

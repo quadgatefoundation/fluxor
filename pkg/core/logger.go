@@ -116,17 +116,25 @@ func (l *defaultLogger) log(level string, logger *log.Logger, message string) {
 		}
 		jsonData, err := json.Marshal(entry)
 		if err == nil {
-			logger.Output(3, string(jsonData))
+			if oerr := logger.Output(3, string(jsonData)); oerr != nil {
+				// Best-effort logging; ignore on error.
+			}
 		} else {
 			// Fallback to plain text if JSON marshal fails
-			logger.Output(3, fmt.Sprintf("[%s] %s %v", level, message, l.fields))
+			if oerr := logger.Output(3, fmt.Sprintf("[%s] %s %v", level, message, l.fields)); oerr != nil {
+				// Best-effort logging; ignore on error.
+			}
 		}
 	} else {
 		// Plain text output with fields appended
 		if len(l.fields) > 0 {
-			logger.Output(3, fmt.Sprintf("%s %v", message, l.fields))
+			if oerr := logger.Output(3, fmt.Sprintf("%s %v", message, l.fields)); oerr != nil {
+				// Best-effort logging; ignore on error.
+			}
 		} else {
-			logger.Output(3, message)
+			if oerr := logger.Output(3, message); oerr != nil {
+				// Best-effort logging; ignore on error.
+			}
 		}
 	}
 }

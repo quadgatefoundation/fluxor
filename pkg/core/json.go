@@ -5,8 +5,8 @@ import (
 	"fmt"
 )
 
-// JSONEncode encodes a value to JSON bytes (fail-fast)
-// Uses standard encoding/json for JSON encoding
+// JSONEncode encodes a value to JSON bytes (fail-fast).
+// Uses standard encoding/json for JSON encoding.
 // Note: Previously used Sonic for better performance, but switched to stdlib
 // for Go 1.24 compatibility. Will switch back when Sonic supports Go 1.24.
 func JSONEncode(v interface{}) ([]byte, error) {
@@ -24,8 +24,8 @@ func JSONEncode(v interface{}) ([]byte, error) {
 	return data, nil
 }
 
-// JSONDecode decodes JSON bytes to a value (fail-fast)
-// Uses standard encoding/json for JSON decoding
+// JSONDecode decodes JSON bytes to a value (fail-fast).
+// Uses standard encoding/json for JSON decoding.
 // Note: Previously used Sonic for better performance, but switched to stdlib
 // for Go 1.24 compatibility. Will switch back when Sonic supports Go 1.24.
 func JSONDecode(data []byte, v interface{}) error {

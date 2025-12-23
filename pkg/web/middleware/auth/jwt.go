@@ -17,6 +17,20 @@ type JWTConfig struct {
 	// SecretKeyFunc is a function that returns the secret key (alternative to SecretKey)
 	SecretKeyFunc func(token *jwt.Token) (interface{}, error)
 
+	// ValidMethods is the list of accepted JWT signing algorithms (e.g. ["HS256"]).
+	// Strongly recommended to set to avoid alg-confusion attacks.
+	// Default: ["HS256"] when SecretKey is used.
+	ValidMethods []string
+
+	// Issuer requires a matching `iss` claim when set.
+	Issuer string
+
+	// Audience requires a matching `aud` claim when set.
+	Audience []string
+
+	// Leeway allows small clock skew for exp/nbf/iat validation.
+	Leeway time.Duration
+
 	// ClaimsKey is the key to store claims in request context
 	ClaimsKey string
 
@@ -37,11 +51,12 @@ type JWTConfig struct {
 // DefaultJWTConfig returns a default JWT configuration
 func DefaultJWTConfig(secretKey string) JWTConfig {
 	return JWTConfig{
-		SecretKey:  secretKey,
-		ClaimsKey:  "user",
-		TokenLookup: "header:Authorization",
-		AuthScheme: "Bearer",
-		SkipPaths:  []string{},
+		SecretKey:    secretKey,
+		ClaimsKey:    "user",
+		TokenLookup:  "header:Authorization",
+		AuthScheme:   "Bearer",
+		SkipPaths:    []string{},
+		ValidMethods: []string{"HS256"},
 	}
 }
 
@@ -51,13 +66,18 @@ func JWT(config JWTConfig) web.FastMiddleware {
 		panic("JWT: SecretKey or SecretKeyFunc must be provided")
 	}
 
+	validMethods := config.ValidMethods
+	if len(validMethods) == 0 && config.SecretKey != "" {
+		validMethods = []string{"HS256"}
+	}
+
 	// Default secret key function
 	keyFunc := config.SecretKeyFunc
 	if keyFunc == nil {
 		keyFunc = func(token *jwt.Token) (interface{}, error) {
-			// Validate signing method
+			// Validate signing method family for HMAC secrets.
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+				return nil, fmt.Errorf("unexpected signing method")
 			}
 			return []byte(config.SecretKey), nil
 		}
@@ -88,8 +108,12 @@ func JWT(config JWTConfig) web.FastMiddleware {
 	if onError == nil {
 		onError = func(ctx *web.FastRequestContext, err error) error {
 			ctx.RequestCtx.SetStatusCode(401)
+			ctx.RequestCtx.Response.Header.Set("WWW-Authenticate", fmt.Sprintf(`%s realm="fluxor", error="invalid_token"`, authScheme))
 			ctx.RequestCtx.SetContentType("application/json")
-			ctx.RequestCtx.WriteString(fmt.Sprintf(`{"error":"unauthorized","message":"%s"}`, err.Error()))
+			// Do not reflect internal errors to the caller by default.
+			if _, werr := ctx.RequestCtx.WriteString(`{"error":"unauthorized","message":"invalid or missing token"}`); werr != nil {
+				// Best-effort response write; ignore on error.
+			}
 			return nil
 		}
 	}
@@ -134,7 +158,21 @@ func JWT(config JWTConfig) web.FastMiddleware {
 			}
 
 			// Parse and validate token
-			token, err := jwt.Parse(tokenString, keyFunc)
+			options := make([]jwt.ParserOption, 0, 4)
+			if len(validMethods) > 0 {
+				options = append(options, jwt.WithValidMethods(validMethods))
+			}
+			if config.Leeway > 0 {
+				options = append(options, jwt.WithLeeway(config.Leeway))
+			}
+			if config.Issuer != "" {
+				options = append(options, jwt.WithIssuer(config.Issuer))
+			}
+			if len(config.Audience) > 0 {
+				options = append(options, jwt.WithAudience(config.Audience...))
+			}
+
+			token, err := jwt.ParseWithClaims(tokenString, jwt.MapClaims{}, keyFunc, options...)
 			if err != nil {
 				return onError(ctx, fmt.Errorf("invalid token: %w", err))
 			}
@@ -224,4 +262,3 @@ func (g *JWTTokenGenerator) Generate(claims map[string]interface{}, expiresIn ti
 
 	return tokenString, nil
 }
-

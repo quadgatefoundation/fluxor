@@ -98,12 +98,12 @@ func CCUBasedConfig(addr string, maxCCU int, overflowCCU int) *FastHTTPServerCon
 
 // CCUBasedConfigWithUtilization returns configuration with target utilization percentage
 // maxCCU: Maximum concurrent users capacity
-// utilizationPercent: Target utilization under normal load (e.g., 60 for 60%)
+// utilizationPercent: Target utilization under normal load (e.g., 67 for 67%)
 // This leaves headroom for traffic spikes while maintaining stability
 // Formula: NormalCapacity = maxCCU * (utilizationPercent / 100)
 func CCUBasedConfigWithUtilization(addr string, maxCCU int, utilizationPercent int) *FastHTTPServerConfig {
 	if utilizationPercent < 1 || utilizationPercent > 100 {
-		utilizationPercent = 60 // Default to 60% if invalid
+		utilizationPercent = 67 // Default to 67% if invalid
 	}
 
 	// Calculate normal capacity (target utilization)
@@ -149,7 +149,7 @@ func NewFastHTTPServer(vertx core.Vertx, config *FastHTTPServerConfig) *FastHTTP
 	router := newFastRouter()
 
 	// Calculate normal CCU capacity (queue + workers)
-	// This is the target utilization capacity (e.g., 60% of max)
+	// This is the target utilization capacity (e.g., 67% of max)
 	normalCapacity := config.MaxQueue + config.Workers
 
 	// Create Mailbox abstraction (hides channel creation)
@@ -173,7 +173,7 @@ func NewFastHTTPServer(vertx core.Vertx, config *FastHTTPServerConfig) *FastHTTP
 		maxQueue:       config.MaxQueue,
 		workers:        config.Workers,
 		// Initialize backpressure controller with normal capacity
-		// This ensures 60% utilization under normal load
+		// This ensures 67% utilization under normal load
 		// Reset interval: 60 seconds (for metrics)
 		backpressure: NewBackpressureController(normalCapacity, 60),
 		server: &fasthttp.Server{
@@ -251,7 +251,7 @@ func (s *FastHTTPServer) Metrics() ServerMetrics {
 		QueueCapacity:      s.maxQueue,
 		Workers:            s.workers,
 		QueueUtilization:   queueUtil,
-		NormalCCU:          normalCapacity, // Normal capacity (target utilization, e.g., 60%)
+		NormalCCU:          normalCapacity, // Normal capacity (target utilization, e.g., 67%)
 		CurrentCCU:         int(bpMetrics.CurrentLoad),
 		CCUUtilization:     bpMetrics.Utilization, // Utilization relative to normal capacity
 		TotalRequests:      atomic.LoadInt64(&s.totalRequests),
@@ -267,7 +267,7 @@ type ServerMetrics struct {
 	QueueCapacity      int     // Maximum queue capacity
 	Workers            int     // Number of worker goroutines
 	QueueUtilization   float64 // Queue utilization percentage
-	NormalCCU          int     // Normal CCU capacity (target utilization, e.g., 60%)
+	NormalCCU          int     // Normal CCU capacity (target utilization, e.g., 67%)
 	CurrentCCU         int     // Current CCU load
 	CCUUtilization     float64 // CCU utilization percentage (relative to normal capacity)
 	TotalRequests      int64   // Total requests processed (successful + rejected)
@@ -277,19 +277,21 @@ type ServerMetrics struct {
 
 // handleRequest is the main request handler - non-blocking, queues to workers
 // Fail-fast: Returns 503 immediately when normal capacity exceeded (backpressure)
-// Normal capacity is set to target utilization (e.g., 60%), leaving headroom for spikes
+// Normal capacity is set to target utilization (e.g., 67%), leaving headroom for spikes
 // This prevents system crash by rejecting overflow requests gracefully
 func (s *FastHTTPServer) handleRequest(ctx *fasthttp.RequestCtx) {
 	// Step 1: Check backpressure controller (normal capacity limiting)
-	// Normal capacity = target utilization (e.g., 60% of max)
+	// Normal capacity = target utilization (e.g., 67% of max)
 	// This ensures system operates at target utilization under normal load
 	if !s.backpressure.TryAcquire() {
 		// Fail-fast: Normal capacity exceeded, reject immediately
-		// This maintains target utilization (e.g., 60%) under normal conditions
+		// This maintains target utilization (e.g., 67%) under normal conditions
 		atomic.AddInt64(&s.rejectedRequests, 1)
 		ctx.Error("Service Unavailable", fasthttp.StatusServiceUnavailable)
 		ctx.SetContentType("application/json")
-		ctx.WriteString(`{"error":"capacity_exceeded","message":"Server at normal capacity - backpressure applied","code":"BACKPRESSURE"}`)
+		if _, werr := ctx.WriteString(`{"error":"capacity_exceeded","message":"Server at normal capacity - backpressure applied","code":"BACKPRESSURE"}`); werr != nil {
+			// Best-effort response write; ignore on error.
+		}
 		return
 	}
 
@@ -302,7 +304,9 @@ func (s *FastHTTPServer) handleRequest(ctx *fasthttp.RequestCtx) {
 
 		ctx.Error("Service Unavailable", fasthttp.StatusServiceUnavailable)
 		ctx.SetContentType("application/json")
-		ctx.WriteString(`{"error":"queue_full","message":"Server overloaded - backpressure applied","code":"BACKPRESSURE"}`)
+		if _, werr := ctx.WriteString(`{"error":"queue_full","message":"Server overloaded - backpressure applied","code":"BACKPRESSURE"}`); werr != nil {
+			// Best-effort response write; ignore on error.
+		}
 		return
 	}
 
@@ -337,12 +341,12 @@ func (s *FastHTTPServer) startRequestWorkers() {
 func (s *FastHTTPServer) processRequestFromMailbox(ctx context.Context) error {
 	// Fail-fast: recover from panics to prevent system crash
 	// Panic isolation: one worker panic doesn't crash entire system
-		defer func() {
-			if r := recover(); r != nil {
-				// Log panic but don't re-panic to prevent system crash
-				s.Logger().Errorf("panic in worker (isolated): %v", r)
-			}
-		}()
+	defer func() {
+		if r := recover(); r != nil {
+			// Log panic but don't re-panic to prevent system crash
+			s.Logger().Errorf("panic in worker (isolated): %v", r)
+		}
+	}()
 
 	// Use Mailbox abstraction (hides channel receive and select statement)
 	for {
@@ -381,7 +385,9 @@ func (s *FastHTTPServer) processRequestFromMailbox(ctx context.Context) error {
 						requestID = "unknown"
 					}
 					s.Logger().Errorf("handler panic (request_id=%s): %v", requestID, r)
-					reqCtx.WriteString(fmt.Sprintf(`{"error":"handler_panic","message":"Request handler failed","request_id":"%s"}`, requestID))
+					if _, werr := reqCtx.WriteString(fmt.Sprintf(`{"error":"handler_panic","message":"Request handler failed","request_id":"%s"}`, requestID)); werr != nil {
+						// Best-effort response write; ignore on error.
+					}
 				}
 			}()
 
@@ -464,7 +470,9 @@ func (c *FastRequestContext) JSON(statusCode int, data interface{}) error {
 		return fmt.Errorf("json encode error: %w", err)
 	}
 
-	c.RequestCtx.Write(jsonData)
+	if _, werr := c.RequestCtx.Write(jsonData); werr != nil {
+		// Best-effort response write; ignore on error.
+	}
 	return nil
 }
 
@@ -488,7 +496,9 @@ func (c *FastRequestContext) BindJSON(v interface{}) error {
 func (c *FastRequestContext) Text(statusCode int, text string) error {
 	c.RequestCtx.SetStatusCode(statusCode)
 	c.RequestCtx.SetContentType("text/plain")
-	c.RequestCtx.WriteString(text)
+	if _, werr := c.RequestCtx.WriteString(text); werr != nil {
+		// Best-effort response write; ignore on error.
+	}
 	return nil
 }
 

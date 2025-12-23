@@ -1,6 +1,7 @@
 # Security in Fluxor
 
-Fluxor provides enterprise-grade security features including authentication, authorization, security headers, CORS, and rate limiting.
+Fluxor provides security building blocks including authentication, authorization, security headers, CORS, and rate limiting.
+This document also includes a basic threat model and operational best practices.
 
 ## Table of Contents
 
@@ -9,7 +10,9 @@ Fluxor provides enterprise-grade security features including authentication, aut
 3. [Security Headers](#security-headers)
 4. [CORS](#cors)
 5. [Rate Limiting](#rate-limiting)
-6. [Best Practices](#best-practices)
+6. [Threat Model](#threat-model)
+7. [Best Practices](#best-practices)
+8. [Security Reporting](#security-reporting)
 
 ---
 
@@ -24,10 +27,14 @@ import "github.com/fluxorio/fluxor/pkg/web/middleware/auth"
 
 // Configure JWT middleware
 router.UseFast(auth.JWT(auth.JWTConfig{
-    SecretKey:  "your-secret-key",
-    ClaimsKey:  "user",
-    TokenLookup: "header:Authorization",
-    AuthScheme: "Bearer",
+    SecretKey:     "your-secret-key",
+    ClaimsKey:     "user",
+    TokenLookup:   "header:Authorization",
+    AuthScheme:    "Bearer",
+    ValidMethods:  []string{"HS256"},
+    Issuer:        "https://issuer.example",
+    Audience:      []string{"my-api"},
+    Leeway:        30 * time.Second,
 }))
 
 // Access user claims in handler
@@ -109,27 +116,27 @@ Fluxor provides Role-Based Access Control (RBAC) middleware.
 import "github.com/fluxorio/fluxor/pkg/web/middleware/auth"
 
 // Require specific role
-router.GETFast("/admin/users", 
-    auth.RequireRole("admin"),
+router.GETFastWith("/admin/users",
     func(ctx *web.FastRequestContext) error {
         return ctx.JSON(200, users)
     },
+    auth.RequireRole("admin"),
 )
 
 // Require any of multiple roles
-router.GETFast("/moderator/content",
-    auth.RequireAnyRole("admin", "moderator"),
+router.GETFastWith("/moderator/content",
     func(ctx *web.FastRequestContext) error {
         return ctx.JSON(200, content)
     },
+    auth.RequireAnyRole("admin", "moderator"),
 )
 
 // Require all roles
-router.GETFast("/super-admin",
-    auth.RequireAllRoles("admin", "super_admin"),
+router.GETFastWith("/super-admin",
     func(ctx *web.FastRequestContext) error {
         return ctx.JSON(200, data)
     },
+    auth.RequireAllRoles("admin", "super_admin"),
 )
 ```
 
@@ -175,12 +182,15 @@ router.UseFast(security.Headers(security.HeadersConfig{
     HSTS:                true,
     HSTSMaxAge:          31536000, // 1 year
     HSTSIncludeSub:      true,
-    CSP:                 "default-src 'self'; script-src 'self' 'unsafe-inline'",
+    // If you serve HTML, configure CSP for your front-end carefully.
+    CSP:                 "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
     XFrameOptions:       "DENY",
     XContentTypeOptions: true,
-    XXSSProtection:      "1; mode=block",
-    ReferrerPolicy:      "strict-origin-when-cross-origin",
+    // XXSSProtection is legacy; modern browsers ignore it.
+    ReferrerPolicy:      "no-referrer",
     PermissionsPolicy:   "geolocation=(), microphone=()",
+    CrossOriginOpenerPolicy:   "same-origin",
+    CrossOriginResourcePolicy: "same-origin",
     CustomHeaders: map[string]string{
         "X-Custom-Header": "value",
     },
@@ -223,11 +233,11 @@ router.UseFast(security.CORS(security.CORSConfig{
 ### CORS for Specific Routes
 
 ```go
-// Apply CORS only to API routes
-apiRouter := router.Group("/api")
-apiRouter.UseFast(security.CORS(security.CORSConfig{
-    AllowedOrigins: []string{"https://example.com"},
-}))
+// Apply CORS only to specific route(s)
+router.GETFastWith("/api/public",
+    publicHandler,
+    security.CORS(security.CORSConfig{AllowedOrigins: []string{"https://example.com"}}),
+)
 ```
 
 ---
@@ -269,6 +279,15 @@ router.UseFast(security.RateLimit(security.RateLimitConfig{
         })
     },
 }))
+
+// Per-route rate limits (configurable per route)
+router.GETFastWith("/api/heavy",
+    heavyHandler,
+    security.RateLimit(security.RateLimitConfig{
+        RequestsPerSecond: 2,
+        Burst:             2,
+    }),
+)
 ```
 
 ### Skip Rate Limiting for Specific Paths
@@ -288,36 +307,55 @@ router.UseFast(security.RateLimit(security.RateLimitConfig{
 ## Complete Security Setup
 
 ```go
-func setupSecurity(router *web.FastRouter) {
-    // Security headers (first)
-    router.UseFast(security.Headers(security.DefaultHeadersConfig()))
-    
-    // CORS
-    router.UseFast(security.CORS(security.CORSConfig{
-        AllowedOrigins: []string{"https://example.com"},
-        AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
-        AllowCredentials: true,
-    }))
-    
-    // Rate limiting
-    router.UseFast(security.RateLimit(security.RateLimitConfig{
-        RequestsPerMinute: 100,
-    }))
-    
-    // Authentication (JWT)
-    router.UseFast(auth.JWT(auth.JWTConfig{
-        SecretKey: os.Getenv("JWT_SECRET"),
-        ClaimsKey: "user",
-        SkipPaths: []string{"/health", "/ready", "/metrics"},
-    }))
-    
-    // Protected routes
-    router.GETFast("/api/users",
-        auth.RequireRole("admin"),
-        getUserHandler,
-    )
-}
+router := server.FastRouter()
+
+// Security headers (first)
+router.UseFast(security.Headers(security.DefaultHeadersConfig()))
+
+// CORS
+router.UseFast(security.CORS(security.CORSConfig{
+    AllowedOrigins: []string{"https://example.com"},
+    AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
+    AllowCredentials: true,
+}))
+
+// Rate limiting
+router.UseFast(security.RateLimit(security.RateLimitConfig{
+    RequestsPerMinute: 100,
+}))
+
+// Authentication (JWT)
+router.UseFast(auth.JWT(auth.JWTConfig{
+    SecretKey: os.Getenv("JWT_SECRET"),
+    ClaimsKey: "user",
+    SkipPaths: []string{"/health", "/ready", "/metrics"},
+    ValidMethods: []string{"HS256"},
+}))
+
+// Protected routes
+router.GETFastWith("/api/users", getUserHandler, auth.RequireRole("admin"))
 ```
+
+---
+
+## Threat Model
+
+### Assets
+- **Authentication secrets**: JWT signing keys, API keys, OAuth client secrets.
+- **User data**: Any PII or domain data flowing through handlers/event bus.
+- **Availability**: Event loop/executor capacity, request queue capacity.
+
+### Trust boundaries
+- **Internet ↔ HTTP server**: untrusted input (headers, body, query).
+- **Internal components ↔ EventBus**: messages may contain user-controlled fields; treat as untrusted unless proven otherwise.
+
+### Threats & mitigations (high-level)
+- **Brute force / abuse**: `security.RateLimit` per IP/user key; prefer separate limits for “expensive” routes.
+- **Auth bypass / JWT algorithm confusion**: set `ValidMethods`, verify `iss`/`aud` where applicable, keep signing keys secret and rotated.
+- **Clickjacking / XSS**: `security.Headers` with CSP + `X-Frame-Options` / `frame-ancestors`.
+- **Data exfiltration via CORS**: restrict allowed origins; avoid `*` with credentials.
+- **DoS via overload**: FastHTTP server backpressure + bounded queues; avoid long-running handlers; use timeouts.
+- **Sensitive error leakage**: avoid reflecting internal errors; log with request ID and return generic messages.
 
 ---
 
@@ -399,6 +437,11 @@ router.UseFast(auth.JWT(auth.JWTConfig{
 - [ ] HTTPS enforced (via HSTS header)
 
 ---
+
+## Security Reporting
+
+- **Vulnerability reports**: open a private report channel (preferred) or file an issue with minimal details and request a private follow-up.
+- **What to include**: affected version/commit, reproduction steps, impact, and suggested fix if you have one.
 
 ## Summary
 

@@ -104,7 +104,9 @@ func OAuth2(config OAuth2Config) web.FastMiddleware {
 		onError = func(ctx *web.FastRequestContext, err error) error {
 			ctx.RequestCtx.SetStatusCode(401)
 			ctx.RequestCtx.SetContentType("application/json")
-			ctx.RequestCtx.WriteString(fmt.Sprintf(`{"error":"unauthorized","message":"%s"}`, err.Error()))
+			if _, werr := ctx.RequestCtx.WriteString(fmt.Sprintf(`{"error":"unauthorized","message":"%s"}`, err.Error())); werr != nil {
+				// Best-effort response write; ignore on error.
+			}
 			return nil
 		}
 	}
@@ -200,4 +202,3 @@ func introspectToken(client *http.Client, url, clientID, clientSecret, token str
 
 	return claims, nil
 }
-

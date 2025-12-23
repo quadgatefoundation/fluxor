@@ -246,7 +246,10 @@ func SendAsync(eb core.EventBus, ctx context.Context, address string, data inter
 	promise := NewPromiseT[bool]()
 
 	go func() {
-		eb.Send(address, data)
+		if err := eb.Send(address, data); err != nil {
+			promise.Fail(err)
+			return
+		}
 		promise.Complete(true)
 	}()
 
@@ -258,7 +261,10 @@ func PublishAsync(eb core.EventBus, ctx context.Context, address string, data in
 	promise := NewPromiseT[bool]()
 
 	go func() {
-		eb.Publish(address, data)
+		if err := eb.Publish(address, data); err != nil {
+			promise.Fail(err)
+			return
+		}
 		promise.Complete(true)
 	}()
 

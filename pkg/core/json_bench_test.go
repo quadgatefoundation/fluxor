@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// BenchmarkJSONEncode benchmarks the pooled JSON encoding
+// BenchmarkJSONEncode benchmarks the JSON encoding wrapper
 func BenchmarkJSONEncode(b *testing.B) {
 	data := map[string]interface{}{
 		"name":  "test",
@@ -65,7 +65,7 @@ func BenchmarkJSONEncode_SonicDirect(b *testing.B) {
 }
 */
 
-// BenchmarkJSONDecode benchmarks the JSON decoding
+// BenchmarkJSONDecode benchmarks the JSON decoding wrapper
 func BenchmarkJSONDecode(b *testing.B) {
 	data := []byte(`{"name":"test","value":42,"nested":{"key":"value"}}`)
 	var result map[string]interface{}

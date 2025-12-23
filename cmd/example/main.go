@@ -28,7 +28,9 @@ func (p *PingReactor) OnStart(ctx core.FluxorContext) error {
 				return
 			case <-ticker.C:
 				msg := fmt.Sprintf("PING")
-				ctx.EventBus().Publish("ping-topic", msg)
+				if err := ctx.EventBus().Publish("ping-topic", msg); err != nil {
+					logger.Error("Failed to publish ping", "err", err)
+				}
 			}
 		}
 	}()

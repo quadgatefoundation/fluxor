@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/fluxorio/fluxor/pkg/core"
+	"github.com/google/uuid"
 )
 
 // ReactorRuntime provides a reactor-based runtime (alternative to Verticle-based)
@@ -45,7 +45,7 @@ func (r *ReactorRuntime) EventBus() core.EventBus {
 
 func (r *ReactorRuntime) Deploy(reactor Reactor, config map[string]any) string {
 	id := uuid.New().String()
-	
+
 	// Create FluxorContext using vertx
 	fctx := newContext(r.ctx, r.vertx)
 	if config != nil {
@@ -90,14 +90,16 @@ func (r *ReactorRuntime) Undeploy(id string) {
 func (r *ReactorRuntime) Shutdown() {
 	slog.Info("System shutting down...")
 	r.cancel() // Signal context cancellation
-	
+
 	r.mu.Lock()
 	for id, reactor := range r.deployments {
-		reactor.OnStop()
+		if err := reactor.OnStop(); err != nil {
+			slog.Error("Error stopping reactor", "id", id, "error", err)
+		}
 		delete(r.deployments, id)
 	}
 	r.mu.Unlock()
-	
+
 	// Wait with Timeout
 	done := make(chan struct{})
 	go func() {
@@ -111,8 +113,10 @@ func (r *ReactorRuntime) Shutdown() {
 	case <-time.After(5 * time.Second):
 		slog.Warn("Shutdown timed out")
 	}
-	
-	r.vertx.Close()
+
+	if err := r.vertx.Close(); err != nil {
+		slog.Error("Error closing vertx", "error", err)
+	}
 }
 
 // newContext creates a FluxorContext (using internal newContext function)
@@ -120,8 +124,8 @@ func newContext(ctx context.Context, vertx core.Vertx) core.FluxorContext {
 	// Use the internal newContext from core package
 	// Since it's not exported, we need to create a wrapper
 	return &fluxorContextWrapper{
-		ctx:   ctx,
-		vertx: vertx,
+		ctx:    ctx,
+		vertx:  vertx,
 		config: make(map[string]interface{}),
 	}
 }
@@ -133,10 +137,10 @@ type fluxorContextWrapper struct {
 	config map[string]interface{}
 }
 
-func (c *fluxorContextWrapper) Context() context.Context { return c.ctx }
-func (c *fluxorContextWrapper) EventBus() core.EventBus  { return c.vertx.EventBus() }
-func (c *fluxorContextWrapper) Vertx() core.Vertx        { return c.vertx }
-func (c *fluxorContextWrapper) Config() map[string]interface{} { return c.config }
+func (c *fluxorContextWrapper) Context() context.Context                { return c.ctx }
+func (c *fluxorContextWrapper) EventBus() core.EventBus                 { return c.vertx.EventBus() }
+func (c *fluxorContextWrapper) Vertx() core.Vertx                       { return c.vertx }
+func (c *fluxorContextWrapper) Config() map[string]interface{}          { return c.config }
 func (c *fluxorContextWrapper) SetConfig(key string, value interface{}) { c.config[key] = value }
 func (c *fluxorContextWrapper) Deploy(verticle core.Verticle) (string, error) {
 	return c.vertx.DeployVerticle(verticle)
