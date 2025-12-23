@@ -347,6 +347,36 @@ go get github.com/fluxorio/fluxor
 go run cmd/example/main.go
 ```
 
+### Load Testing
+
+Performance testing with k6 load testing framework:
+
+```bash
+# Install k6
+brew install k6  # macOS (see loadtest/README.md for other platforms)
+
+# Run the enterprise example
+go run cmd/enterprise/main.go
+
+# Run load test (10k concurrent users)
+k6 run loadtest/load-test.js
+
+# Run spike test (sudden burst)
+k6 run loadtest/spike-test.js
+
+# Run stress test (find breaking point)
+k6 run loadtest/stress-test.js
+```
+
+**Performance Benchmarks:**
+- **227,000 requests/second** (single endpoint)
+- **4.4µs P95 latency** under normal load
+- **50,000+ RPS** sustained throughput
+- **3,350 concurrent users** normal capacity (single instance)
+- **10,000+ concurrent users** with horizontal scaling
+
+See [PERFORMANCE.md](PERFORMANCE.md) for complete performance guide and tuning recommendations.
+
 ### Enterprise Example (Production-Ready)
 
 The enterprise example demonstrates ALL production features in one comprehensive application:
