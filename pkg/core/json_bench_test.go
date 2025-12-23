@@ -3,8 +3,6 @@ package core
 import (
 	"encoding/json"
 	"testing"
-
-	"github.com/bytedance/sonic"
 )
 
 // BenchmarkJSONEncode benchmarks the pooled JSON encoding
@@ -46,6 +44,8 @@ func BenchmarkJSONEncode_Standard(b *testing.B) {
 }
 
 // BenchmarkJSONEncode_SonicDirect benchmarks Sonic Marshal directly for comparison
+// Disabled due to Sonic incompatibility with Go 1.24
+/*
 func BenchmarkJSONEncode_SonicDirect(b *testing.B) {
 	data := map[string]interface{}{
 		"name":  "test",
@@ -63,6 +63,7 @@ func BenchmarkJSONEncode_SonicDirect(b *testing.B) {
 		}
 	}
 }
+*/
 
 // BenchmarkJSONDecode benchmarks the JSON decoding
 func BenchmarkJSONDecode(b *testing.B) {
@@ -93,6 +94,8 @@ func BenchmarkJSONDecode_Standard(b *testing.B) {
 }
 
 // BenchmarkJSONDecode_SonicDirect benchmarks Sonic Unmarshal directly for comparison
+// Disabled due to Sonic incompatibility with Go 1.24
+/*
 func BenchmarkJSONDecode_SonicDirect(b *testing.B) {
 	data := []byte(`{"name":"test","value":42,"nested":{"key":"value"}}`)
 	var result map[string]interface{}
@@ -105,6 +108,7 @@ func BenchmarkJSONDecode_SonicDirect(b *testing.B) {
 		}
 	}
 }
+*/
 
 // BenchmarkJSONEncode_Parallel benchmarks concurrent encoding
 func BenchmarkJSONEncode_Parallel(b *testing.B) {
