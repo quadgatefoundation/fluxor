@@ -317,7 +317,7 @@ func setupApplication(deps map[reflect.Type]interface{}) error {
 - ✅ Request ID tracking and propagation
 - ✅ Health and readiness endpoints
 - ✅ Comprehensive metrics collection
-- ✅ High-performance JSON encoding/decoding (Sonic)
+- ✅ JSON encoding/decoding (standard library, swappable behind `core.JSONEncode/JSONDecode`)
 - ✅ Structured logging infrastructure
 - ✅ **Prometheus metrics export** (Day2)
 - ✅ **OpenTelemetry distributed tracing** (Day2)

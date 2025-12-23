@@ -38,7 +38,9 @@ func RequireAnyRole(roles ...string) web.FastMiddleware {
 			if userInterface == nil {
 				ctx.RequestCtx.SetStatusCode(401)
 				ctx.RequestCtx.SetContentType("application/json")
-				ctx.RequestCtx.WriteString(`{"error":"unauthorized","message":"user not found in context"}`)
+				if _, err := ctx.RequestCtx.WriteString(`{"error":"unauthorized","message":"user not found in context"}`); err != nil {
+					// Best-effort response write; ignore on error.
+				}
 				return nil
 			}
 
@@ -68,7 +70,9 @@ func RequireAnyRole(roles ...string) web.FastMiddleware {
 			default:
 				ctx.RequestCtx.SetStatusCode(403)
 				ctx.RequestCtx.SetContentType("application/json")
-				ctx.RequestCtx.WriteString(`{"error":"forbidden","message":"invalid user type"}`)
+				if _, err := ctx.RequestCtx.WriteString(`{"error":"forbidden","message":"invalid user type"}`); err != nil {
+					// Best-effort response write; ignore on error.
+				}
 				return nil
 			}
 
@@ -89,7 +93,9 @@ func RequireAnyRole(roles ...string) web.FastMiddleware {
 			if !hasRole {
 				ctx.RequestCtx.SetStatusCode(403)
 				ctx.RequestCtx.SetContentType("application/json")
-				ctx.RequestCtx.WriteString(fmt.Sprintf(`{"error":"forbidden","message":"insufficient permissions, required roles: %v"}`, roles))
+				if _, err := ctx.RequestCtx.WriteString(fmt.Sprintf(`{"error":"forbidden","message":"insufficient permissions, required roles: %v"}`, roles)); err != nil {
+					// Best-effort response write; ignore on error.
+				}
 				return nil
 			}
 
@@ -107,7 +113,9 @@ func RequireAllRoles(roles ...string) web.FastMiddleware {
 			if userInterface == nil {
 				ctx.RequestCtx.SetStatusCode(401)
 				ctx.RequestCtx.SetContentType("application/json")
-				ctx.RequestCtx.WriteString(`{"error":"unauthorized","message":"user not found in context"}`)
+				if _, err := ctx.RequestCtx.WriteString(`{"error":"unauthorized","message":"user not found in context"}`); err != nil {
+					// Best-effort response write; ignore on error.
+				}
 				return nil
 			}
 
@@ -135,7 +143,9 @@ func RequireAllRoles(roles ...string) web.FastMiddleware {
 			default:
 				ctx.RequestCtx.SetStatusCode(403)
 				ctx.RequestCtx.SetContentType("application/json")
-				ctx.RequestCtx.WriteString(`{"error":"forbidden","message":"invalid user type"}`)
+				if _, err := ctx.RequestCtx.WriteString(`{"error":"forbidden","message":"invalid user type"}`); err != nil {
+					// Best-effort response write; ignore on error.
+				}
 				return nil
 			}
 
@@ -149,7 +159,9 @@ func RequireAllRoles(roles ...string) web.FastMiddleware {
 				if !roleMap[requiredRole] {
 					ctx.RequestCtx.SetStatusCode(403)
 					ctx.RequestCtx.SetContentType("application/json")
-					ctx.RequestCtx.WriteString(fmt.Sprintf(`{"error":"forbidden","message":"missing required role: %s"}`, requiredRole))
+					if _, err := ctx.RequestCtx.WriteString(fmt.Sprintf(`{"error":"forbidden","message":"missing required role: %s"}`, requiredRole)); err != nil {
+						// Best-effort response write; ignore on error.
+					}
 					return nil
 				}
 			}
@@ -158,4 +170,3 @@ func RequireAllRoles(roles ...string) web.FastMiddleware {
 		}
 	}
 }
-
