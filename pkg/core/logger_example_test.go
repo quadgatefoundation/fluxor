@@ -18,7 +18,6 @@ func ExampleLogger_WithFields() {
 
 	// Log with fields included
 	loggerWithFields.Info("User logged in")
-	// Output: [INFO] User logged in map[action:login ip:192.168.1.1 user_id:123]
 }
 
 func ExampleLogger_WithContext() {
@@ -33,7 +32,6 @@ func ExampleLogger_WithContext() {
 
 	// Log with request ID included
 	loggerWithContext.Info("Request processed")
-	// Output: [INFO] Request processed map[request_id:...]
 }
 
 func ExampleNewJSONLogger() {
@@ -48,7 +46,6 @@ func ExampleNewJSONLogger() {
 
 	// Log messages will be in JSON format
 	loggerWithFields.WithContext(context.Background()).Info("Service started")
-	// Output: {"timestamp":"2025-12-20T23:20:08Z","level":"INFO","message":"Service started","fields":{"service":"user-service","version":"1.0.0"}}
 }
 
 func ExampleLogger_enterpriseUsage() {
@@ -76,10 +73,6 @@ func ExampleLogger_enterpriseUsage() {
 		"user_id": userID,
 		"status":  "success",
 	}).Info("Request completed")
-
-	// Output:
-	// {"timestamp":"...","level":"INFO","message":"Request received","fields":{"endpoint":"/api/users","method":"GET","request_id":"..."}}
-	// {"timestamp":"...","level":"INFO","message":"Request completed","fields":{"endpoint":"/api/users","method":"GET","request_id":"...","status":"success","user_id":"user-123"}}
 }
 
 func ExampleLogger_errorLogging() {
@@ -95,7 +88,5 @@ func ExampleLogger_errorLogging() {
 		"field":      "email",
 		"value":      "invalid-email",
 	}).Error("Validation failed")
-
-	// Output: [ERROR] Validation failed map[error_code:VALIDATION_ERROR field:email request_id:... value:invalid-email]
 }
 

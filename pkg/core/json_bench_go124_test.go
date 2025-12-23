@@ -1,16 +1,16 @@
-//go:build !go1.24
-// +build !go1.24
+//go:build go1.24
+// +build go1.24
 
 package core
 
 import (
 	"encoding/json"
 	"testing"
-
-	"github.com/bytedance/sonic"
 )
 
-// BenchmarkJSONEncode benchmarks the pooled JSON encoding
+// Go 1.24+: Sonic benchmark is disabled (see pkg/core/json_go124.go).
+
+// BenchmarkJSONEncode benchmarks the JSON encoding wrapper
 func BenchmarkJSONEncode(b *testing.B) {
 	data := map[string]interface{}{
 		"name":  "test",
@@ -48,26 +48,7 @@ func BenchmarkJSONEncode_Standard(b *testing.B) {
 	}
 }
 
-// BenchmarkJSONEncode_SonicDirect benchmarks Sonic Marshal directly for comparison
-func BenchmarkJSONEncode_SonicDirect(b *testing.B) {
-	data := map[string]interface{}{
-		"name":  "test",
-		"value": 42,
-		"nested": map[string]string{
-			"key": "value",
-		},
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, err := sonic.Marshal(data)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-// BenchmarkJSONDecode benchmarks the JSON decoding
+// BenchmarkJSONDecode benchmarks the JSON decoding wrapper
 func BenchmarkJSONDecode(b *testing.B) {
 	data := []byte(`{"name":"test","value":42,"nested":{"key":"value"}}`)
 	var result map[string]interface{}
@@ -95,20 +76,6 @@ func BenchmarkJSONDecode_Standard(b *testing.B) {
 	}
 }
 
-// BenchmarkJSONDecode_SonicDirect benchmarks Sonic Unmarshal directly for comparison
-func BenchmarkJSONDecode_SonicDirect(b *testing.B) {
-	data := []byte(`{"name":"test","value":42,"nested":{"key":"value"}}`)
-	var result map[string]interface{}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		err := sonic.Unmarshal(data, &result)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
 // BenchmarkJSONEncode_Parallel benchmarks concurrent encoding
 func BenchmarkJSONEncode_Parallel(b *testing.B) {
 	data := map[string]interface{}{
@@ -126,3 +93,4 @@ func BenchmarkJSONEncode_Parallel(b *testing.B) {
 		}
 	})
 }
+
