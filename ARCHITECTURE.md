@@ -592,21 +592,14 @@ Consumer receives Message
     ↓
 Handler processes (can decode if needed)
     ↓
-Sonic.Unmarshal() [high-performance decoding]
+json.Unmarshal() [standard library decoding]
 ```
 
 **JSON Implementation Details**:
 
-- **Sonic Integration**: Uses `github.com/bytedance/sonic` for high-performance JSON encoding/decoding
-- **Performance**: 2-3x faster than standard library (`encoding/json`)
-  - Encoding: ~1289 ns/op vs ~2523 ns/op (standard library)
-  - Decoding: ~1388 ns/op vs ~4228 ns/op (standard library)
-- **Optimizations**: 
-  - JIT (Just-In-Time) compilation for type-specific encoders/decoders
-  - SIMD (Single Instruction Multiple Data) optimizations for vectorized operations
-  - Internal buffer pooling and memory management
+- **Implementation**: Uses Go standard library `encoding/json` for maximum compatibility and stability.
 - **Fail-fast**: Input validation before encoding/decoding
-- **Compatibility**: Drop-in replacement for standard JSON operations
+- **Performance**: Adequate for most services; if you need faster JSON, add an optional high-performance codec behind the `core.JSONEncode/JSONDecode` abstraction.
 
 ### Configuration Flow
 

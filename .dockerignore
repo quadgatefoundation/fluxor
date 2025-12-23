@@ -1,0 +1,7 @@
+bin/
+coverage*
+*.out
+*.html
+node_modules/
+.git/
+.github/
