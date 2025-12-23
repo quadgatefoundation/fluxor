@@ -229,3 +229,36 @@ func GetUserID(ctx *web.FastRequestContext, key string) (string, error) {
 
 	return "", fmt.Errorf("user ID not found in claims")
 }
+
+// JWTTokenGenerator generates JWT tokens
+type JWTTokenGenerator struct {
+	secret []byte
+}
+
+// NewJWTTokenGenerator creates a new JWT token generator
+func NewJWTTokenGenerator(secret []byte) *JWTTokenGenerator {
+	return &JWTTokenGenerator{secret: secret}
+}
+
+// Generate creates a new JWT token with the given claims and expiration
+func (g *JWTTokenGenerator) Generate(claims map[string]interface{}, expiresIn time.Duration) (string, error) {
+	if claims == nil {
+		claims = make(map[string]interface{})
+	}
+
+	// Add standard claims
+	now := time.Now()
+	claims["iat"] = now.Unix()
+	claims["exp"] = now.Add(expiresIn).Unix()
+
+	// Create token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims(claims))
+
+	// Sign token
+	tokenString, err := token.SignedString(g.secret)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign token: %w", err)
+	}
+
+	return tokenString, nil
+}

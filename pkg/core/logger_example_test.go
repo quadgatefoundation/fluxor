@@ -106,4 +106,3 @@ var _ = demoLoggerWithContext
 var _ = demoNewJSONLogger
 var _ = demoLoggerEnterpriseUsage
 var _ = demoLoggerErrorLogging
-

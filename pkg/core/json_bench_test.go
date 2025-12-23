@@ -43,6 +43,28 @@ func BenchmarkJSONEncode_Standard(b *testing.B) {
 	}
 }
 
+// BenchmarkJSONEncode_SonicDirect benchmarks Sonic Marshal directly for comparison
+// Disabled due to Sonic incompatibility with Go 1.24
+/*
+func BenchmarkJSONEncode_SonicDirect(b *testing.B) {
+	data := map[string]interface{}{
+		"name":  "test",
+		"value": 42,
+		"nested": map[string]string{
+			"key": "value",
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := sonic.Marshal(data)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+*/
+
 // BenchmarkJSONDecode benchmarks the JSON decoding wrapper
 func BenchmarkJSONDecode(b *testing.B) {
 	data := []byte(`{"name":"test","value":42,"nested":{"key":"value"}}`)
@@ -70,6 +92,23 @@ func BenchmarkJSONDecode_Standard(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkJSONDecode_SonicDirect benchmarks Sonic Unmarshal directly for comparison
+// Disabled due to Sonic incompatibility with Go 1.24
+/*
+func BenchmarkJSONDecode_SonicDirect(b *testing.B) {
+	data := []byte(`{"name":"test","value":42,"nested":{"key":"value"}}`)
+	var result map[string]interface{}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		err := sonic.Unmarshal(data, &result)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+*/
 
 // BenchmarkJSONEncode_Parallel benchmarks concurrent encoding
 func BenchmarkJSONEncode_Parallel(b *testing.B) {
