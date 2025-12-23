@@ -40,10 +40,15 @@ type Metrics struct {
 	DatabaseQueryDuration       *prometheus.HistogramVec
 
 	// Server metrics
-	ServerQueuedRequests   prometheus.Gauge
-	ServerRejectedRequests prometheus.Counter
-	ServerCurrentCCU       prometheus.Gauge
-	ServerCCUUtilization   prometheus.Gauge
+	ServerQueuedRequests        prometheus.Gauge
+	ServerRejectedRequests      prometheus.Counter
+	ServerCurrentCCU            prometheus.Gauge
+	ServerNormalCCU             prometheus.Gauge
+	ServerCCUUtilization        prometheus.Gauge
+	ServerBackpressureQueueLength prometheus.Gauge
+
+	// Verticle metrics
+	VerticleCount prometheus.Gauge
 
 	// Custom metrics registry
 	CustomCounters   map[string]*prometheus.CounterVec
@@ -170,10 +175,30 @@ func NewMetrics(registerer prometheus.Registerer) *Metrics {
 				Help: "Current concurrent users (CCU)",
 			},
 		),
+		ServerNormalCCU: promauto.With(registerer).NewGauge(
+			prometheus.GaugeOpts{
+				Name: "fluxor_server_normal_ccu",
+				Help: "Normal capacity CCU (target utilization)",
+			},
+		),
 		ServerCCUUtilization: promauto.With(registerer).NewGauge(
 			prometheus.GaugeOpts{
 				Name: "fluxor_server_ccu_utilization",
-				Help: "CCU utilization percentage",
+				Help: "CCU utilization percentage (0-100)",
+			},
+		),
+		ServerBackpressureQueueLength: promauto.With(registerer).NewGauge(
+			prometheus.GaugeOpts{
+				Name: "fluxor_backpressure_queue_length",
+				Help: "Current backpressure queue length",
+			},
+		),
+
+		// Verticle metrics
+		VerticleCount: promauto.With(registerer).NewGauge(
+			prometheus.GaugeOpts{
+				Name: "fluxor_verticle_count",
+				Help: "Number of deployed verticles",
 			},
 		),
 
@@ -216,13 +241,20 @@ func (m *Metrics) RecordDatabaseQuery(operation string, duration time.Duration) 
 }
 
 // UpdateServerMetrics updates server metrics
-func (m *Metrics) UpdateServerMetrics(queued int64, rejected int64, currentCCU int, utilization float64) {
+func (m *Metrics) UpdateServerMetrics(queued int64, rejected int64, currentCCU int, normalCCU int, utilization float64) {
 	m.ServerQueuedRequests.Set(float64(queued))
+	m.ServerBackpressureQueueLength.Set(float64(queued)) // Alias for backpressure
 	if rejected > 0 {
 		m.ServerRejectedRequests.Add(float64(rejected))
 	}
 	m.ServerCurrentCCU.Set(float64(currentCCU))
+	m.ServerNormalCCU.Set(float64(normalCCU))
 	m.ServerCCUUtilization.Set(utilization)
+}
+
+// UpdateVerticleCount updates the verticle count metric
+func (m *Metrics) UpdateVerticleCount(count int) {
+	m.VerticleCount.Set(float64(count))
 }
 
 // Counter creates or returns a custom counter metric

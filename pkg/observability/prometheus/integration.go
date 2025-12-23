@@ -49,6 +49,7 @@ func UpdateServerMetrics(server *web.FastHTTPServer) {
 		serverMetrics.QueuedRequests,
 		0, // Rejected requests are already counted
 		serverMetrics.CurrentCCU,
+		serverMetrics.NormalCCU,
 		serverMetrics.CCUUtilization,
 	)
 }
