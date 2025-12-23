@@ -17,6 +17,9 @@ type Vertx interface {
 	// UndeployVerticle undeploys a verticle
 	UndeployVerticle(deploymentID string) error
 
+	// DeploymentCount returns the number of deployed verticles
+	DeploymentCount() int
+
 	// Close closes the Vertx instance
 	Close() error
 
@@ -127,6 +130,13 @@ func (v *vertx) UndeployVerticle(deploymentID string) error {
 	}
 
 	return nil
+}
+
+// DeploymentCount returns the number of deployed verticles
+func (v *vertx) DeploymentCount() int {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return len(v.deployments)
 }
 
 func (v *vertx) Close() error {
