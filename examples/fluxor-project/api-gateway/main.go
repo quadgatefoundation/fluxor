@@ -7,7 +7,7 @@ import (
 	"github.com/fluxorio/fluxor/pkg/core"
 	"github.com/fluxorio/fluxor/pkg/fluxor"
 
-	"github.com/quadgatefoundation/fluxor/fluxor-project/api-gateway/verticles"
+	"github.com/quadgatefoundation/fluxor/examples/fluxor-project/api-gateway/verticles"
 )
 
 func main() {
