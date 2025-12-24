@@ -45,6 +45,25 @@ Run the demo:
 go run ./cmd/lite
 ```
 
+## Lite-fast (fasthttp, high-RPS)
+
+If your target is **hundreds of thousands of RPS**, use the fasthttp-based lite variant:
+
+```bash
+go run ./cmd/litefast
+```
+
+Load test (example with `wrk`):
+
+```bash
+wrk -t8 -c512 -d30s http://127.0.0.1:8080/ping
+```
+
+Practical notes for high RPS:
+- Prefer **`Text`** responses over JSON for peak throughput.
+- Keep handlers allocation-free; avoid capturing request context into goroutines.
+- Set OS limits (ulimit), pin CPU, and tune `GOMAXPROCS` for your machine.
+
 ## Core Concepts
 
 ### Verticles
