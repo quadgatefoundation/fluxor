@@ -1,9 +1,7 @@
 package core
 
-import "context"
-
 type WorkerPool struct {
-	tasks chan func(context.Context)
+	tasks chan func()
 }
 
 func NewWorkerPool(workerCount int, queueSize int) *WorkerPool {
@@ -14,18 +12,20 @@ func NewWorkerPool(workerCount int, queueSize int) *WorkerPool {
 		queueSize = 1024
 	}
 
-	wp := &WorkerPool{tasks: make(chan func(context.Context), queueSize)}
+	wp := &WorkerPool{tasks: make(chan func(), queueSize)}
 	for i := 0; i < workerCount; i++ {
 		go func() {
 			for task := range wp.tasks {
-				task(context.Background())
+				task()
 			}
 		}()
 	}
 	return wp
 }
 
-func (wp *WorkerPool) Submit(task func(context.Context)) {
+// Submit enqueues a unit of work. Keep tasks short; if you need cancellation,
+// close over a context in your task.
+func (wp *WorkerPool) Submit(task func()) {
 	wp.tasks <- task
 }
 

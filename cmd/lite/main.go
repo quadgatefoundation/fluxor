@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-
 	"github.com/fluxorio/fluxor/pkg/lite/fluxor"
 	"github.com/fluxorio/fluxor/pkg/lite/fx"
 	"github.com/fluxorio/fluxor/pkg/lite/web"
@@ -29,7 +27,7 @@ func main() {
 		// Demo: WorkerPool + Bus (avoid capturing request context into goroutine)
 		wp := c.Worker()
 		bus := c.Bus()
-		wp.Submit(func(ctx context.Context) {
+		wp.Submit(func() {
 			bus.Publish("log", "Heavy Task Done")
 		})
 

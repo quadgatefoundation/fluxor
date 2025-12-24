@@ -1,7 +1,6 @@
 package core_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -13,7 +12,7 @@ func TestWorkerPool_Submit(t *testing.T) {
 	defer wp.Shutdown()
 
 	done := make(chan struct{})
-	wp.Submit(func(ctx context.Context) {
+	wp.Submit(func() {
 		close(done)
 	})
 

@@ -18,18 +18,20 @@ func TestBus_PublishSubscribe(t *testing.T) {
 	)
 
 	wg.Add(2)
-	bus.Subscribe("topic", func(msg any) {
+	unsub1 := bus.Subscribe("topic", func(msg any) {
 		mu.Lock()
 		got = append(got, msg)
 		mu.Unlock()
 		wg.Done()
 	})
-	bus.Subscribe("topic", func(msg any) {
+	unsub2 := bus.Subscribe("topic", func(msg any) {
 		mu.Lock()
 		got = append(got, msg)
 		mu.Unlock()
 		wg.Done()
 	})
+	defer unsub1()
+	defer unsub2()
 
 	bus.Publish("topic", "hello")
 
