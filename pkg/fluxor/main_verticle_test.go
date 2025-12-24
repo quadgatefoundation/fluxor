@@ -1,6 +1,7 @@
 package fluxor
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -60,5 +61,16 @@ func TestMainVerticle_DeployVerticle_FailFast_NilVerticle(t *testing.T) {
 		if ce.Code != "INVALID_INPUT" {
 			t.Fatalf("error code = %q, want %q", ce.Code, "INVALID_INPUT")
 		}
+	}
+}
+
+func TestNewMainVerticleWithOptions_FailFast_EventBusFactoryError(t *testing.T) {
+	_, err := NewMainVerticleWithOptions("", MainVerticleOptions{
+		EventBusFactory: func(ctx context.Context, vertx core.Vertx, cfg map[string]any) (core.EventBus, error) {
+			return nil, &core.Error{Code: "TEST", Message: "boom"}
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected error when EventBusFactory returns error")
 	}
 }
