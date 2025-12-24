@@ -9,15 +9,24 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Param is a path parameter captured from the route.
+//
+// NOTE: For litefast, Value may be backed by request memory. Do not store it
+// beyond the lifetime of the request.
+type Param struct {
+	Key   string
+	Value string
+}
+
 // FastContext is a fasthttp-friendly context wrapper for lite-fast.
 // It is intentionally minimal and allocation-conscious.
 type FastContext struct {
 	RC      *fasthttp.RequestCtx
-	Params  map[string]string
+	Params  []Param
 	coreCtx *core.FluxorContext
 }
 
-func NewFastContext(rc *fasthttp.RequestCtx, params map[string]string, cCtx *core.FluxorContext) *FastContext {
+func NewFastContext(rc *fasthttp.RequestCtx, params []Param, cCtx *core.FluxorContext) *FastContext {
 	return &FastContext{
 		RC:      rc,
 		Params:  params,
@@ -70,10 +79,12 @@ func (c *FastContext) SetHeader(key, value string) {
 }
 
 func (c *FastContext) Param(key string) string {
-	if c.Params == nil {
-		return ""
+	for i := range c.Params {
+		if c.Params[i].Key == key {
+			return c.Params[i].Value
+		}
 	}
-	return c.Params[key]
+	return ""
 }
 
 func (c *FastContext) Log() *slog.Logger {

@@ -2,8 +2,8 @@ package webfast
 
 import (
 	"bytes"
-	"net/http"
 	"sync"
+	"unsafe"
 
 	"github.com/fluxorio/fluxor/pkg/lite/core"
 	"github.com/fluxorio/fluxor/pkg/lite/fx"
@@ -13,9 +13,15 @@ import (
 type HandlerFunc func(c *fx.FastContext) error
 type Middleware func(next HandlerFunc) HandlerFunc
 
+const (
+	methodGET uint8 = iota + 1
+	methodPOST
+)
+
 type route struct {
-	method     []byte
+	method     uint8
 	pattern    string
+	staticPath []byte // only for routes without params
 	segments   []segment
 	handler    HandlerFunc
 	middleware []Middleware
@@ -28,19 +34,21 @@ type segment struct {
 }
 
 type Router struct {
-	routes     []*route
+	getRoutes  []*route
+	postRoutes []*route
 	middleware []Middleware
 	notFound   HandlerFunc
 	onError    func(c *fx.FastContext, err error) error
 
 	coreCtx *core.FluxorContext
 
-	paramPool sync.Pool
+	paramPool sync.Pool // stores []fx.Param
 }
 
 func NewRouter() *Router {
 	r := &Router{
-		routes:     make([]*route, 0, 32),
+		getRoutes:  make([]*route, 0, 32),
+		postRoutes: make([]*route, 0, 32),
 		middleware: make([]Middleware, 0),
 	}
 	r.notFound = func(c *fx.FastContext) error {
@@ -61,22 +69,33 @@ func (r *Router) Bind(coreCtx *core.FluxorContext) {
 func (r *Router) Use(mw ...Middleware) { r.middleware = append(r.middleware, mw...) }
 
 func (r *Router) GET(path string, h HandlerFunc, mw ...Middleware) {
-	r.add([]byte(http.MethodGet), path, h, mw...)
+	r.add(methodGET, path, h, mw...)
 }
 func (r *Router) POST(path string, h HandlerFunc, mw ...Middleware) {
-	r.add([]byte(http.MethodPost), path, h, mw...)
+	r.add(methodPOST, path, h, mw...)
 }
 
-func (r *Router) add(method []byte, pattern string, h HandlerFunc, mw ...Middleware) {
+func (r *Router) add(method uint8, pattern string, h HandlerFunc, mw ...Middleware) {
 	segs, hasParams := compilePattern(pattern)
-	r.routes = append(r.routes, &route{
+	rt := &route{
 		method:     method,
 		pattern:    pattern,
+		staticPath: nil,
 		segments:   segs,
 		handler:    h,
 		middleware: append([]Middleware(nil), mw...),
 		hasParams:  hasParams,
-	})
+	}
+	if !hasParams {
+		rt.staticPath = []byte(pattern)
+	}
+
+	switch method {
+	case methodGET:
+		r.getRoutes = append(r.getRoutes, rt)
+	case methodPOST:
+		r.postRoutes = append(r.postRoutes, rt)
+	}
 }
 
 func (r *Router) Handler() fasthttp.RequestHandler {
@@ -87,11 +106,18 @@ func (r *Router) Handler() fasthttp.RequestHandler {
 		method := rc.Method()
 		path := rc.Path()
 
-		for _, rt := range r.routes {
-			if !bytes.Equal(rt.method, method) {
-				continue
-			}
+		var routes []*route
+		// Fast method dispatch (only GET/POST supported in litefast).
+		if len(method) == 3 && method[0] == 'G' { // GET
+			routes = r.getRoutes
+		} else if len(method) == 4 && method[0] == 'P' && method[1] == 'O' { // POST
+			routes = r.postRoutes
+		} else {
+			_ = r.notFound(c)
+			return
+		}
 
+		for _, rt := range routes {
 			if ok := matchAndFill(rt, path, c, &r.paramPool); !ok {
 				continue
 			}
@@ -108,9 +134,9 @@ func (r *Router) Handler() fasthttp.RequestHandler {
 				_ = r.onError(c, err)
 			}
 
-			// Return params map to pool (if used)
+			// Return params slice to pool (if used)
 			if c.Params != nil {
-				clear(c.Params)
+				c.Params = c.Params[:0]
 				r.paramPool.Put(c.Params)
 			}
 			return
@@ -156,17 +182,17 @@ func compilePattern(pattern string) ([]segment, bool) {
 
 func matchAndFill(rt *route, path []byte, c *fx.FastContext, pool *sync.Pool) bool {
 	// Fast exact match for patterns without params.
-	if !rt.hasParams && bytes.Equal(path, []byte(rt.pattern)) {
+	if !rt.hasParams && bytes.Equal(path, rt.staticPath) {
 		return true
 	}
 
 	// Split path into segments without allocations.
 	// Reject paths with empty segments for simplicity.
 	if rt.hasParams {
-		if m, ok := pool.Get().(map[string]string); ok {
-			c.Params = m
+		if s, ok := pool.Get().([]fx.Param); ok {
+			c.Params = s[:0]
 		} else {
-			c.Params = make(map[string]string, 4)
+			c.Params = make([]fx.Param, 0, 4)
 		}
 	} else {
 		c.Params = nil
@@ -189,8 +215,8 @@ func matchAndFill(rt *route, path []byte, c *fx.FastContext, pool *sync.Pool) bo
 			part := path[start:i]
 			seg := rt.segments[segIdx]
 			if seg.param != "" {
-				// NOTE: this allocates; only happens for param routes.
-				c.Params[seg.param] = string(part)
+				// Zero-copy view into request memory for perf. Do not store beyond request lifetime.
+				c.Params = append(c.Params, fx.Param{Key: seg.param, Value: b2s(part)})
 			} else {
 				if !bytes.Equal(seg.static, part) {
 					return false
@@ -205,4 +231,11 @@ func matchAndFill(rt *route, path []byte, c *fx.FastContext, pool *sync.Pool) bo
 	}
 
 	return segIdx == len(rt.segments)
+}
+
+func b2s(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	return unsafe.String(unsafe.SliceData(b), len(b))
 }
