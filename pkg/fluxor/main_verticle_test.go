@@ -1,6 +1,7 @@
 package fluxor
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,5 +35,42 @@ func TestMainVerticle_LoadConfig_AndInjectOnDeploy(t *testing.T) {
 
 	if _, err := app.DeployVerticle(&cfgCheckVerticle{}); err != nil {
 		t.Fatalf("DeployVerticle: %v", err)
+	}
+}
+
+func TestNewMainVerticle_FailFast_ConfigLoadError(t *testing.T) {
+	// Non-existent config path should fail immediately.
+	_, err := NewMainVerticle("does-not-exist.json")
+	if err == nil {
+		t.Fatalf("expected error for missing config file")
+	}
+}
+
+func TestMainVerticle_DeployVerticle_FailFast_NilVerticle(t *testing.T) {
+	app, err := NewMainVerticle("")
+	if err != nil {
+		t.Fatalf("NewMainVerticle: %v", err)
+	}
+	defer app.Stop()
+
+	_, err = app.DeployVerticle(nil)
+	if err == nil {
+		t.Fatalf("expected error for nil verticle")
+	}
+	if ce, ok := err.(*core.Error); ok {
+		if ce.Code != "INVALID_INPUT" {
+			t.Fatalf("error code = %q, want %q", ce.Code, "INVALID_INPUT")
+		}
+	}
+}
+
+func TestNewMainVerticleWithOptions_FailFast_EventBusFactoryError(t *testing.T) {
+	_, err := NewMainVerticleWithOptions("", MainVerticleOptions{
+		EventBusFactory: func(ctx context.Context, vertx core.Vertx, cfg map[string]any) (core.EventBus, error) {
+			return nil, &core.Error{Code: "TEST", Message: "boom"}
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected error when EventBusFactory returns error")
 	}
 }

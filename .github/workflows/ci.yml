@@ -31,7 +31,7 @@ jobs:
 
       - name: gosec
         # Scan only the root module code. This repo also contains nested Go
-        # modules under fluxor-project/* which gosec cannot analyze correctly
+        # modules under examples/fluxor-project/* which gosec cannot analyze correctly
         # from the repository root context.
         run: $(go env GOPATH)/bin/gosec ./cmd/... ./pkg/...
 

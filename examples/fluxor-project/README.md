@@ -1,4 +1,4 @@
-# fluxor-project (multi-module example)
+# examples/fluxor-project (multi-module example)
 
 This folder shows how to build multiple services (`api-gateway`, `payment-service`) that communicate via a **cluster EventBus** backed by **NATS**, while still using Fluxor's "main-like" bootstrap API:
 
@@ -19,14 +19,14 @@ nats-server -js -p 4222
 In one terminal:
 
 ```bash
-cd fluxor-project/payment-service
+cd examples/fluxor-project/payment-service
 go run .
 ```
 
 In another terminal:
 
 ```bash
-cd fluxor-project/api-gateway
+cd examples/fluxor-project/api-gateway
 go run .
 ```
 
@@ -41,7 +41,7 @@ curl -sS -X POST http://127.0.0.1:8080/payments/authorize \
 ## Run all-in-one (single process)
 
 ```bash
-cd fluxor-project/all-in-one
+cd examples/fluxor-project/all-in-one
 go run .
 ```
 
