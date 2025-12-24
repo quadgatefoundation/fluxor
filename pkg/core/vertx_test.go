@@ -120,3 +120,22 @@ func TestNewVertxWithOptions_FailFast_EventBusFactoryErrorCancelsContext(t *test
 		t.Fatalf("expected internal context to be cancelled on factory error")
 	}
 }
+
+type failingStartVerticle struct{}
+
+func (v *failingStartVerticle) Start(ctx FluxorContext) error { return errors.New("start failed") }
+func (v *failingStartVerticle) Stop(ctx FluxorContext) error  { return nil }
+
+func TestVertx_DeployVerticle_FailFast_StartError(t *testing.T) {
+	ctx := context.Background()
+	vertx := NewVertx(ctx)
+	defer vertx.Close()
+
+	id, err := vertx.DeployVerticle(&failingStartVerticle{})
+	if err == nil {
+		t.Fatalf("DeployVerticle() expected error when Start() fails")
+	}
+	if id != "" {
+		t.Fatalf("DeployVerticle() id = %q, want empty on start failure", id)
+	}
+}
