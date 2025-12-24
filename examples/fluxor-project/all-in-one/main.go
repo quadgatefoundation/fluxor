@@ -7,7 +7,8 @@ import (
 	"github.com/fluxorio/fluxor/pkg/core"
 	"github.com/fluxorio/fluxor/pkg/fluxor"
 
-	"github.com/quadgatefoundation/fluxor/fluxor-project/payment-service/verticles"
+	apigw "github.com/quadgatefoundation/fluxor/examples/fluxor-project/api-gateway/verticles"
+	pay "github.com/quadgatefoundation/fluxor/examples/fluxor-project/payment-service/verticles"
 )
 
 func main() {
@@ -19,7 +20,7 @@ func main() {
 			return core.NewClusterEventBusJetStream(ctx, vertx, core.ClusterJetStreamConfig{
 				URL:     url,
 				Prefix:  prefix,
-				Service: "payment-service",
+				Service: "all-in-one",
 			})
 		},
 	})
@@ -27,6 +28,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	_, _ = app.DeployVerticle(verticles.NewPaymentVerticle())
+	// deploy order decision here
+	_, _ = app.DeployVerticle(apigw.NewApiGatewayVerticle())
+	_, _ = app.DeployVerticle(pay.NewPaymentVerticle())
+
 	_ = app.Start()
 }

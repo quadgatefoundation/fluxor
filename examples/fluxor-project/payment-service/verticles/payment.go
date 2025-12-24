@@ -3,7 +3,7 @@ package verticles
 import (
 	"github.com/fluxorio/fluxor/pkg/core"
 
-	"github.com/quadgatefoundation/fluxor/fluxor-project/common/contracts"
+	"github.com/quadgatefoundation/fluxor/examples/fluxor-project/common/contracts"
 )
 
 type PaymentVerticle struct{}
