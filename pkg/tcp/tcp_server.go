@@ -267,13 +267,6 @@ func (s *TCPServer) startConnWorkers() {
 }
 
 func (s *TCPServer) processConnFromMailbox(ctx context.Context) error {
-	defer func() {
-		if r := recover(); r != nil {
-			// Panic isolation: one worker panic doesn't crash system.
-			s.Logger().Errorf("panic in tcp worker (isolated): %v", r)
-		}
-	}()
-
 	for {
 		msg, err := s.connMailbox.Receive(ctx)
 		if err != nil {
@@ -307,11 +300,21 @@ func (s *TCPServer) processConnFromMailbox(ctx context.Context) error {
 			RemoteAddr:         conn.RemoteAddr(),
 		}
 
+		// Panic isolation must be per-connection; otherwise a panic would terminate
+		// the worker goroutine and stop future processing.
 		atomic.AddInt64(&s.handledConnections, 1)
-		if err := h(cctx); err != nil {
-			atomic.AddInt64(&s.errorConnections, 1)
-			s.Logger().Errorf("tcp handler error: %v", err)
-		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					atomic.AddInt64(&s.errorConnections, 1)
+					s.Logger().Errorf("panic in tcp handler (isolated): %v", r)
+				}
+			}()
+			if err := h(cctx); err != nil {
+				atomic.AddInt64(&s.errorConnections, 1)
+				s.Logger().Errorf("tcp handler error: %v", err)
+			}
+		}()
 
 		_ = conn.Close()
 		s.backpressure.Release()
