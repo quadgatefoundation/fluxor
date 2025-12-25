@@ -2,6 +2,8 @@
 
 Quick reference guide for component interactions and data flow in Fluxor.
 
+> Terminology note: see `TERMINOLOGY.md` for the repo’s standard naming (Vertx, Verticle, EventBus, FastHTTPServer, Request ID).
+
 ## Core Component Hierarchy
 
 ```

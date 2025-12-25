@@ -2,6 +2,8 @@
 
 This is a starter Helm chart for deploying a Fluxor-based containerized service.
 
+Terminology: this repo standardizes names in `TERMINOLOGY.md` (Vertx, Verticle, EventBus, FastHTTPServer, Request ID).
+
 ### Install
 
 ```bash
