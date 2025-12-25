@@ -1,0 +1,16 @@
+1. Get the application URL:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}{{ (index .paths 0).path }}
+{{- end }}
+{{- else }}
+  kubectl port-forward svc/{{ include "fluxor.fullname" . }} 8080:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+  curl -sS http://127.0.0.1:8080/health
+{{- end }}
+
+2. Values to customize:
+  - image.repository / image.tag
+  - service.type / service.port
+  - ingress.*
+  - resources / autoscaling
+  - config.enabled + config.content (renders to config.yaml)

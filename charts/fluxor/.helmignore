@@ -1,0 +1,15 @@
+.DS_Store
+.git/
+.gitignore
+.idea/
+.vscode/
+*.swp
+*.tmp
+*.bak
+*.tgz
+charts/
+node_modules/
+dist/
+coverage/
+**/__pycache__/
+**/*.test.*

@@ -1,0 +1,16 @@
+apiVersion: v2
+name: fluxor
+description: Helm chart for deploying Fluxor (containerized service)
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+
+keywords:
+  - fluxor
+  - eventbus
+  - nats
+  - go
+
+maintainers:
+  - name: quadgatefoundation
+    url: https://github.com/quadgatefoundation
