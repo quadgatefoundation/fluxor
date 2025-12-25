@@ -53,6 +53,58 @@ type Stats struct {
 	RejectedAppends int64
 }
 
+// Observer receives events for observability (metrics/logging/tracing).
+//
+// Contract:
+// - Implementations must be fast and must not block indefinitely.
+// - Observer calls are best-effort; they must never affect correctness.
+// - An observer should be thread-safe.
+type Observer interface {
+	OnRecover(info RecoverInfo)
+	OnAppendEnqueued(info AppendInfo)
+	OnAppendPersisted(info PersistInfo)
+	OnAppendRejected(info RejectInfo)
+	OnRotate(info RotateInfo)
+}
+
+type RecoverInfo struct {
+	Dir       string
+	Segments  int
+	MaxOffset Offset
+}
+
+type AppendInfo struct {
+	Offset Offset
+	Bytes  int
+}
+
+type PersistInfo struct {
+	Offset   Offset
+	Bytes    int
+	Duration int64 // nanoseconds
+	Err      error
+}
+
+type RejectInfo struct {
+	Bytes  int
+	Reason error
+}
+
+type RotateInfo struct {
+	FromSegment int
+	ToSegment   int
+	Reason      string
+}
+
+// NopObserver is the default observer (no-op).
+type NopObserver struct{}
+
+func (NopObserver) OnRecover(RecoverInfo)         {}
+func (NopObserver) OnAppendEnqueued(AppendInfo)   {}
+func (NopObserver) OnAppendPersisted(PersistInfo) {}
+func (NopObserver) OnAppendRejected(RejectInfo)   {}
+func (NopObserver) OnRotate(RotateInfo)           {}
+
 // Errors.
 var (
 	ErrClosed         = io.ErrClosedPipe

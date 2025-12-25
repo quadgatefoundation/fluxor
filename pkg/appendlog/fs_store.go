@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // FSStoreConfig configures the file-backed append-only store.
@@ -27,6 +28,10 @@ type FSStoreConfig struct {
 
 	// Durability controls when Append is acknowledged.
 	Durability Durability
+
+	// Observer receives best-effort events for observability.
+	// If nil, a no-op observer is used.
+	Observer Observer
 }
 
 // DefaultFSStoreConfig returns a conservative default config.
@@ -36,6 +41,7 @@ func DefaultFSStoreConfig(dir string) FSStoreConfig {
 		MaxSegmentBytes:  64 << 20, // 64MB
 		MaxBufferedBytes: 8 << 20,  // 8MB
 		Durability:       DurabilityMemory,
+		Observer:         NopObserver{},
 	}
 }
 
@@ -56,6 +62,9 @@ func NewFSStore(cfg FSStoreConfig) (Store, error) {
 
 	s := &fsStore{
 		cfg: cfg,
+	}
+	if s.cfg.Observer == nil {
+		s.cfg.Observer = NopObserver{}
 	}
 	if err := s.openOrRecover(); err != nil {
 		_ = s.Close()
@@ -125,6 +134,11 @@ func (s *fsStore) openOrRecover() error {
 		}
 	}
 	atomic.StoreUint64(&s.nextOffset, uint64(maxOffset+1))
+	s.cfg.Observer.OnRecover(RecoverInfo{
+		Dir:       s.cfg.Dir,
+		Segments:  len(segments),
+		MaxOffset: maxOffset,
+	})
 
 	// Open active segment (existing last, or new).
 	s.activeID = maxID
@@ -152,12 +166,14 @@ func (s *fsStore) openOrRecover() error {
 
 func (s *fsStore) Append(data []byte) (Offset, error) {
 	if len(data) == 0 {
+		s.cfg.Observer.OnAppendRejected(RejectInfo{Bytes: 0, Reason: ErrInvalidData})
 		return 0, ErrInvalidData
 	}
 	s.mu.RLock()
 	closed := s.closed
 	s.mu.RUnlock()
 	if closed {
+		s.cfg.Observer.OnAppendRejected(RejectInfo{Bytes: len(data), Reason: ErrClosed})
 		return 0, ErrClosed
 	}
 
@@ -167,6 +183,7 @@ func (s *fsStore) Append(data []byte) (Offset, error) {
 		cur := atomic.LoadInt64(&s.bufferedBytes)
 		if cur+size > s.cfg.MaxBufferedBytes {
 			atomic.AddInt64(&s.rejectedAppends, 1)
+			s.cfg.Observer.OnAppendRejected(RejectInfo{Bytes: len(data), Reason: ErrBackpressure})
 			return 0, ErrBackpressure
 		}
 		if atomic.CompareAndSwapInt64(&s.bufferedBytes, cur, cur+size) {
@@ -187,9 +204,11 @@ func (s *fsStore) Append(data []byte) (Offset, error) {
 	select {
 	case s.appendCh <- req:
 		atomic.AddInt64(&s.appendedRecords, 1)
+		s.cfg.Observer.OnAppendEnqueued(AppendInfo{Offset: offset, Bytes: len(req.data)})
 	default:
 		atomic.AddInt64(&s.rejectedAppends, 1)
 		atomic.AddInt64(&s.bufferedBytes, -size)
+		s.cfg.Observer.OnAppendRejected(RejectInfo{Bytes: len(data), Reason: ErrBackpressure})
 		return 0, ErrBackpressure
 	}
 
@@ -234,7 +253,16 @@ func (s *fsStore) Rotate() error {
 	if s.closed {
 		return ErrClosed
 	}
-	return s.rotateLocked()
+	from := s.activeID
+	if err := s.rotateLocked(); err != nil {
+		return err
+	}
+	s.cfg.Observer.OnRotate(RotateInfo{
+		FromSegment: from,
+		ToSegment:   s.activeID,
+		Reason:      "manual",
+	})
+	return nil
 }
 
 func (s *fsStore) rotateLocked() error {
@@ -318,7 +346,14 @@ func (s *fsStore) flushLoop() {
 
 	// Drain append requests and persist them in order.
 	for req := range s.appendCh {
+		start := time.Now()
 		err := s.appendToDisk(req.offset, req.data)
+		s.cfg.Observer.OnAppendPersisted(PersistInfo{
+			Offset:   req.offset,
+			Bytes:    len(req.data),
+			Duration: time.Since(start).Nanoseconds(),
+			Err:      err,
+		})
 		atomic.AddInt64(&s.bufferedBytes, -int64(len(req.data)))
 		if s.cfg.Durability == DurabilityFsync {
 			req.ackCh <- err
@@ -341,9 +376,15 @@ func (s *fsStore) appendToDisk(offset Offset, data []byte) error {
 
 	// Rotate if needed.
 	if s.activeSize+int64(len(hdr))+int64(len(data)) > s.cfg.MaxSegmentBytes {
+		from := s.activeID
 		if err := s.rotateLocked(); err != nil {
 			return err
 		}
+		s.cfg.Observer.OnRotate(RotateInfo{
+			FromSegment: from,
+			ToSegment:   s.activeID,
+			Reason:      "max_segment_bytes",
+		})
 	}
 
 	if _, err := s.activeBuf.Write(hdr[:]); err != nil {
