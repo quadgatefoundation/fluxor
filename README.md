@@ -1,34 +1,70 @@
 # Fluxor
 
-A reactive framework and runtime abstraction for Go, inspired by Vert.x reactive patterns.
+A reactive framework for Go, inspired by Vert.x and Node.js async patterns.
+
+## Quick Start (Primary Pattern)
+
+```go
+package main
+
+import (
+    "log"
+    "github.com/fluxorio/fluxor/pkg/fluxor"
+    "github.com/fluxorio/fluxor/pkg/core"
+)
+
+func main() {
+    // 1. Create app with config
+    app, err := fluxor.NewMainVerticle("config.json")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // 2. Deploy verticles (order matters)
+    app.DeployVerticle(NewApiVerticle())
+    app.DeployVerticle(NewWorkerVerticle())
+
+    // 3. Start and block (handles SIGINT/SIGTERM)
+    app.Start()
+}
+```
+
+> **📖 See [docs/PRIMARY_PATTERN.md](docs/PRIMARY_PATTERN.md) for the complete guide.**
+
+## Why This Pattern?
+
+| Feature | Description |
+|---------|-------------|
+| **Config-driven** | Load from JSON/YAML, auto-inject to verticles |
+| **Lifecycle-aware** | Graceful start/stop, signal handling built-in |
+| **Cluster-ready** | Swap to NATS EventBus with one option |
+| **Verticle-based** | Isolated components with clear boundaries |
+| **Fail-fast** | Errors propagate immediately |
 
 ## Overview
 
-Fluxor is a reactive programming framework that provides:
+Fluxor provides:
 
-- **Event-driven architecture** with an event bus for pub/sub and point-to-point messaging
+- **Event-driven architecture** with EventBus (pub/sub, point-to-point, request-reply)
 - **Verticle-based deployment** model for isolated units of work
 - **Reactive workflows** with composable steps
-- **Future/Promise** abstractions for asynchronous operations
-- **Stack-based task execution** (abstraction over gostacks)
-- **Dependency injection** and lifecycle management
-- **Web abstractions** (not a web framework, but provides HTTP server abstractions)
+- **Future/Promise** abstractions for async operations
+- **High-performance HTTP** server (FastHTTP with CCU-based backpressure)
+- **Cluster EventBus** via NATS/JetStream
 
 ## Architecture
 
 ```
-cmd/
-  main.go          - Application entry point
-
-  lite/main.go     - Minimal (acyclic) example entry point
-
 pkg/
-  core/            - Core abstractions (EventBus, Verticle, Context, Vertx)
-  fx/              - Dependency injection and lifecycle management
-  web/             - HTTP/WebSocket abstractions
-  fluxor/          - Main framework with runtime abstraction over gostacks
+  core/            - Vertx, EventBus, Verticle, FluxorContext
+  fluxor/          - MainVerticle, Future/Promise, Workflows
+  web/             - FastHTTPServer, Router, Backpressure
+  fx/              - Dependency injection (alternative pattern)
+  lite/            - Minimal implementation (~500 LOC)
 
-  lite/            - Minimal, acyclic package graph (core/fx/web/fluxor)
+examples/
+  fluxor-project/  - Microservices example (API Gateway + Payment Service)
+  todo-api/        - Complete REST API example
 ```
 
 ## Minimal (acyclic) architecture (optional)
@@ -234,142 +270,101 @@ server := web.NewFastHTTPServer(vertx, config)
 
 ## Usage Example
 
+### Primary Pattern: MainVerticle
+
 ```go
 package main
 
 import (
-    "context"
     "log"
-    "os"
-    "os/signal"
-    "reflect"
-    "syscall"
     "time"
 
     "github.com/fluxorio/fluxor/pkg/core"
-    "github.com/fluxorio/fluxor/pkg/fx"
+    "github.com/fluxorio/fluxor/pkg/fluxor"
     "github.com/fluxorio/fluxor/pkg/web"
 )
 
 func main() {
-    ctx, cancel := context.WithCancel(context.Background())
-    defer cancel()
-
-    // Create Fluxor application
-    app, err := fx.New(ctx,
-        fx.Provide(fx.NewValueProvider("example-config")),
-        fx.Invoke(fx.NewInvoker(setupApplication)),
-    )
+    app, err := fluxor.NewMainVerticle("config.json")
     if err != nil {
-        log.Fatalf("Failed to create Fluxor app: %v", err)
+        log.Fatal(err)
     }
 
-    // Start the application
-    if err := app.Start(); err != nil {
-        log.Fatalf("Failed to start Fluxor app: %v", err)
-    }
-
-    // Setup graceful shutdown
-    sigChan := make(chan os.Signal, 1)
-    signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-    // Wait for shutdown signal
-    <-sigChan
-    log.Println("Shutting down...")
-
-    if err := app.Stop(); err != nil {
-        log.Fatalf("Error stopping app: %v", err)
-    }
+    app.DeployVerticle(NewApiVerticle())
+    app.Start()
 }
 
-func setupApplication(deps map[reflect.Type]interface{}) error {
-    vertx := deps[reflect.TypeOf((*core.Vertx)(nil)).Elem()].(core.Vertx)
+type ApiVerticle struct {
+    server *web.FastHTTPServer
+}
 
-    // Deploy verticle
-    verticle := &MyVerticle{}
-    if _, err := vertx.DeployVerticle(verticle); err != nil {
-        return err
+func NewApiVerticle() *ApiVerticle { return &ApiVerticle{} }
+
+func (v *ApiVerticle) Start(ctx core.FluxorContext) error {
+    // Get config (auto-injected from config.json)
+    addr := ":8080"
+    if val, ok := ctx.Config()["http_addr"].(string); ok {
+        addr = val
     }
 
-    // Create FastHTTP server with CCU-based backpressure
-    maxCCU := 5000
-    utilizationPercent := 67
-    config := web.CCUBasedConfigWithUtilization(":8080", maxCCU, utilizationPercent)
-    server := web.NewFastHTTPServer(vertx, config)
+    // Create HTTP server
+    v.server = web.NewFastHTTPServer(ctx.Vertx(), web.DefaultFastHTTPServerConfig(addr))
+    router := v.server.FastRouter()
 
-    // Setup routes (request ID is automatically handled)
-    router := server.FastRouter()
-
-    // Simple JSON endpoint
-    router.GETFast("/", func(ctx *web.FastRequestContext) error {
-        return ctx.JSON(200, map[string]interface{}{
-            "message": "Hello from Fluxor!",
-            "request_id": ctx.RequestID(),
-        })
+    // Define routes
+    router.GETFast("/health", func(c *web.FastRequestContext) error {
+        return c.JSON(200, map[string]any{"status": "ok"})
     })
 
-    // Health check endpoint
-    router.GETFast("/health", func(ctx *web.FastRequestContext) error {
-        return ctx.JSON(200, map[string]interface{}{
-            "status": "UP",
-        })
-    })
-
-    // Readiness check endpoint
-    router.GETFast("/ready", func(ctx *web.FastRequestContext) error {
-        metrics := server.Metrics()
-        ready := metrics.QueueUtilization < 90.0 && metrics.CCUUtilization < 90.0
-        statusCode := 200
-        if !ready {
-            statusCode = 503
+    router.POSTFast("/api/process", func(c *web.FastRequestContext) error {
+        // Use EventBus for service communication
+        reply, err := c.EventBus.Request("worker.process", c.RequestCtx.PostBody(), 5*time.Second)
+        if err != nil {
+            return c.JSON(502, map[string]any{"error": "service_unavailable"})
         }
-        return ctx.JSON(statusCode, map[string]interface{}{
-            "ready": ready,
-            "metrics": metrics,
-        })
+        return c.JSON(200, reply.Body())
     })
 
-    // Start server
-    go func() {
-        log.Printf("Starting server on %s", config.Addr)
-        if err := server.Start(); err != nil {
-            log.Printf("Server error: %v", err)
-        }
-    }()
+    go v.server.Start()
+    return nil
+}
 
+func (v *ApiVerticle) Stop(ctx core.FluxorContext) error {
+    if v.server != nil {
+        return v.server.Stop()
+    }
     return nil
 }
 ```
 
-## Simple bootstrap API (DeployVerticle + Start)
-
-If you prefer a “Vert.x-like” main:
+### With NATS Cluster EventBus
 
 ```go
-package main
-
-import (
-	"github.com/fluxorio/fluxor/pkg/fluxor"
-	"github.com/fluxorio/fluxor/pkg/core"
-)
-
-type ApiGatewayVerticle struct{}
-func (v *ApiGatewayVerticle) Start(ctx core.FluxorContext) error { return nil }
-func (v *ApiGatewayVerticle) Stop(ctx core.FluxorContext) error  { return nil }
+import "context"
 
 func main() {
-	app, err := fluxor.NewMainVerticle("config.json")
-	if err != nil {
-		panic(err)
-	}
+    app, err := fluxor.NewMainVerticleWithOptions("config.json", fluxor.MainVerticleOptions{
+        EventBusFactory: func(ctx context.Context, vertx core.Vertx, cfg map[string]any) (core.EventBus, error) {
+            return core.NewClusterEventBusJetStream(ctx, vertx, core.ClusterJetStreamConfig{
+                URL:     cfg["nats_url"].(string),
+                Prefix:  "myapp",
+                Service: "api-gateway",
+            })
+        },
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	// Decide deploy order here
-	_, _ = app.DeployVerticle(&ApiGatewayVerticle{})
-
-	// Blocks until SIGINT/SIGTERM
-	_ = app.Start()
+    app.DeployVerticle(NewApiVerticle())
+    app.DeployVerticle(NewWorkerVerticle())
+    app.Start()
 }
 ```
+
+### Alternative: FX Dependency Injection
+
+For complex applications needing advanced DI, see [ARCHITECTURE.md](ARCHITECTURE.md#application-initialization).
 
 ## Features
 
