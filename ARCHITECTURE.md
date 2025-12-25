@@ -235,10 +235,38 @@ type Vertx interface {
 }
 ```
 
+**DeploymentState** (lifecycle tracking):
+```go
+type DeploymentState int
+
+const (
+    DeploymentStatePending  DeploymentState = iota // AsyncVerticle only: being started
+    DeploymentStateStarted                          // Successfully started
+    DeploymentStateFailed                           // Start failed (async only)
+    DeploymentStateStopping                         // Being stopped
+    DeploymentStateStopped                          // Stopped
+)
+```
+
+**State Transitions**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Sync Verticle:                                             │
+│  PENDING → Start() → STARTED (or FAILED → removed)         │
+│  STARTED → Stop() → STOPPING → STOPPED                      │
+├─────────────────────────────────────────────────────────────┤
+│  Async Verticle:                                            │
+│  PENDING → AsyncStart() callback → STARTED or FAILED       │
+│  STARTED → AsyncStop() callback → STOPPED                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
 **Architecture Notes**:
 - Single Vertx instance per application
 - Thread-safe deployment operations
 - Context propagation for cancellation
+- Pending deployments cannot be undeployed (fail-fast)
+- Failed deployments are automatically removed from registry
 
 ---
 
@@ -1180,4 +1208,23 @@ Fluxor provides a **reactive runtime** for building high-performance, event-driv
 - **High performance** through non-blocking I/O and efficient resource usage
 
 The framework is designed to be **standalone**, **predictable**, and **scalable**, enabling developers to build complex backend systems with confidence.
+
+---
+
+## Deep Dive Documentation
+
+For detailed analysis of specific components, see the clarity documents:
+
+| Document | Description |
+|----------|-------------|
+| [`docs/clarity/01-core-runtime.md`](docs/clarity/01-core-runtime.md) | Core runtime: Vertx, DeploymentState, EventBus lifecycle |
+| [`docs/clarity/02-web-layer.md`](docs/clarity/02-web-layer.md) | Web layer: FastHTTPServer, Router, Backpressure |
+| [`docs/clarity/03-fluxor-runtime.md`](docs/clarity/03-fluxor-runtime.md) | Fluxor runtime: MainVerticle, Future/Promise patterns |
+| [`docs/clarity/04-lite-runtime.md`](docs/clarity/04-lite-runtime.md) | Lite runtime: Lightweight implementation |
+
+These documents include:
+- Detailed flow diagrams
+- Confusing spots and suggested fixes
+- Implementation details
+- Priority recommendations
 
