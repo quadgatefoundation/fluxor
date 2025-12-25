@@ -1,0 +1,11 @@
+{
+  "http_addr": ":8080",
+  "tcp_addr": ":9090",
+  "workers": {
+    "count": 2,
+    "ids": ["A", "B"]
+  },
+  "master": {
+    "timeout_seconds": 10
+  }
+}
