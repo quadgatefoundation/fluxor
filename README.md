@@ -47,6 +47,7 @@ Fluxor provides:
 
 - **Event-driven architecture** with EventBus (pub/sub, point-to-point, request-reply)
 - **Verticle-based deployment** model for isolated units of work
+- **State Machine Engine** - Finite state machines with guards, actions, and persistence
 - **n8n-like Workflow Engine** - JSON-defined, event-driven workflows
 - **Reactive workflows** with composable steps
 - **Future/Promise** abstractions for async operations
@@ -59,12 +60,14 @@ Fluxor provides:
 pkg/
   core/            - Vertx, EventBus, Verticle, FluxorContext
   fluxor/          - MainVerticle, Future/Promise, Workflows
+  statemachine/    - State Machine Engine with guards, actions, persistence
   web/             - FastHTTPServer, Router, Backpressure
   fx/              - Dependency injection (alternative pattern)
   lite/            - Minimal implementation (~500 LOC)
 
 examples/
   fluxor-project/  - Microservices example (API Gateway + Payment Service)
+  statemachine-demo/ - State machine example (Order processing FSM)
   todo-api/        - Complete REST API example
 ```
 
@@ -164,6 +167,59 @@ step2 := fluxor.NewStep("step2", func(ctx context.Context, data interface{}) (in
 workflow := fluxor.NewWorkflow("my-workflow", step1, step2)
 workflow.Execute(ctx)
 ```
+
+### State Machine Engine
+
+Build finite state machines with event-driven transitions:
+
+```go
+import "github.com/fluxorio/fluxor/pkg/statemachine"
+
+// Create state machine verticle
+smVerticle := statemachine.NewVerticle(&statemachine.VerticleConfig{
+    HTTPAddr: ":8082", // Optional HTTP API
+})
+
+// Register guards and actions
+smVerticle.RegisterGuard("amountPositive", func(ctx context.Context, event *statemachine.Event, execCtx *statemachine.ExecutionContext) bool {
+    return event.Data["amount"].(float64) > 0
+})
+
+smVerticle.RegisterAction("processOrder", func(ctx context.Context, event *statemachine.Event, execCtx *statemachine.ExecutionContext) error {
+    // Process order logic
+    return nil
+})
+
+// Build state machine
+machine := statemachine.NewStateMachineBuilder("order", "Order FSM").
+    InitialState("created").
+    AddState("created", "Order Created").
+        AddTransition("process", "processing").
+            Guard("amountPositive").
+            Action("processOrder").
+            Done().
+        Done().
+    AddState("processing", "Processing").
+        AddTransition("complete", "completed").Done().
+        Done().
+    AddState("completed", "Completed").Final(true).Done().
+    Build()
+
+smVerticle.Engine().RegisterMachine(machine)
+app.DeployVerticle(smVerticle)
+```
+
+**State Machine Features:**
+- Declarative state definitions (JSON or programmatic)
+- Event-driven transitions via EventBus
+- Guards (conditions) for transitions
+- Actions (enter/exit/transition handlers)
+- State change listeners
+- Persistence (memory/file/custom)
+- HTTP API for management
+- Transition history tracking
+
+See [pkg/statemachine/README.md](pkg/statemachine/README.md) for complete documentation.
 
 ### Workflow Engine (n8n-like)
 
@@ -438,6 +494,7 @@ For complex applications needing advanced DI, see [ARCHITECTURE.md](ARCHITECTURE
 ### Core Features
 - ✅ Event-driven messaging (pub/sub, point-to-point, request-reply)
 - ✅ Verticle deployment model
+- ✅ **State Machine Engine** - Finite state machines with guards, actions, and persistence
 - ✅ **n8n-like Workflow Engine** - JSON-defined, event-driven automation
 - ✅ Reactive workflows
 - ✅ Future/Promise abstractions
@@ -553,6 +610,7 @@ See [`cmd/enterprise/README.md`](cmd/enterprise/README.md) for complete document
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and design patterns
 - **[docs/PRIMARY_PATTERN.md](docs/PRIMARY_PATTERN.md)** - Recommended MainVerticle pattern
+- **[pkg/statemachine/README.md](pkg/statemachine/README.md)** - State Machine Engine guide
 - **[pkg/workflow/README.md](pkg/workflow/README.md)** - n8n-like Workflow Engine guide
 - **[DOCUMENTATION.md](DOCUMENTATION.md)** - Complete API reference and usage guide
 - **[CORE_COMPONENTS.md](CORE_COMPONENTS.md)** - Core components definition and interactions

@@ -1,0 +1,103 @@
+{
+  "id": "order-fsm",
+  "name": "Order Processing State Machine",
+  "description": "A comprehensive order processing workflow with validation, processing, and completion",
+  "version": "1.0.0",
+  "initialState": "created",
+  "states": [
+    {
+      "id": "created",
+      "name": "Order Created",
+      "description": "Initial state when order is created",
+      "transitions": [
+        {
+          "event": "validate",
+          "target": "validating",
+          "guard": "amountPositive",
+          "actions": [
+            {
+              "type": "function",
+              "name": "validateOrder"
+            }
+          ],
+          "priority": 1
+        },
+        {
+          "event": "reject",
+          "target": "rejected",
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "id": "validating",
+      "name": "Validating Order",
+      "description": "Validating order data",
+      "transitions": [
+        {
+          "event": "process",
+          "target": "processing"
+        },
+        {
+          "event": "invalid",
+          "target": "rejected"
+        }
+      ]
+    },
+    {
+      "id": "processing",
+      "name": "Processing Order",
+      "description": "Processing the order",
+      "onEnter": [
+        {
+          "type": "function",
+          "name": "processOrder"
+        }
+      ],
+      "transitions": [
+        {
+          "event": "complete",
+          "target": "completed"
+        },
+        {
+          "event": "fail",
+          "target": "failed",
+          "actions": [
+            {
+              "type": "function",
+              "name": "failOrder"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "completed",
+      "name": "Order Completed",
+      "description": "Order successfully completed",
+      "type": "final",
+      "onEnter": [
+        {
+          "type": "function",
+          "name": "completeOrder"
+        }
+      ]
+    },
+    {
+      "id": "rejected",
+      "name": "Order Rejected",
+      "description": "Order was rejected",
+      "type": "final"
+    },
+    {
+      "id": "failed",
+      "name": "Order Failed",
+      "description": "Order processing failed",
+      "type": "final"
+    }
+  ],
+  "settings": {
+    "maxHistorySize": 100,
+    "autoSave": true
+  }
+}
