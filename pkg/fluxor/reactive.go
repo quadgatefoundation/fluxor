@@ -22,6 +22,7 @@ type Reactive interface {
 }
 
 // Future represents an asynchronous computation
+// Deprecated: Use FutureT[T] for type safety.
 type Future interface {
 	// Complete completes the future with a result
 	Complete(result interface{})
@@ -56,6 +57,7 @@ type Future interface {
 }
 
 // Promise is a writable Future
+// Deprecated: Use PromiseT[T] for type safety.
 type Promise interface {
 	Future
 
@@ -102,7 +104,13 @@ func NewFuture() Future {
 }
 
 func (f *future) Complete(result interface{}) {
+	f.tryComplete(result)
+}
+
+func (f *future) tryComplete(result interface{}) bool {
+	completed := false
 	f.once.Do(func() {
+		completed = true
 		f.mu.Lock()
 		f.completed = true
 		f.result = FutureResult{Value: result}
@@ -118,10 +126,17 @@ func (f *future) Complete(result interface{}) {
 			handler(result)
 		}
 	})
+	return completed
 }
 
 func (f *future) Fail(err error) {
+	f.tryFail(err)
+}
+
+func (f *future) tryFail(err error) bool {
+	completed := false
 	f.once.Do(func() {
+		completed = true
 		f.mu.Lock()
 		f.completed = true
 		f.result = FutureResult{Error: err}
@@ -137,6 +152,7 @@ func (f *future) Fail(err error) {
 			handler(err)
 		}
 	})
+	return completed
 }
 
 func (f *future) Result() <-chan FutureResult {
@@ -199,14 +215,36 @@ func (f *future) Await(ctx context.Context) (interface{}, error) {
 	f.mu.RUnlock()
 
 	// Wait for completion or context cancellation
-	select {
-	case result := <-f.resultChan:
-		if result.Error != nil {
-			return nil, result.Error
+	// Use a ticker to prevent race condition where resultChan is consumed by another Await
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case result := <-f.resultChan:
+			// Put back for other consumers
+			select {
+			case f.resultChan <- result:
+			default:
+			}
+			if result.Error != nil {
+				return nil, result.Error
+			}
+			return result.Value, nil
+		case <-ticker.C:
+			f.mu.RLock()
+			if f.completed {
+				result := f.result
+				f.mu.RUnlock()
+				if result.Error != nil {
+					return nil, result.Error
+				}
+				return result.Value, nil
+			}
+			f.mu.RUnlock()
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
-		return result.Value, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
 	}
 }
 
@@ -265,11 +303,19 @@ func NewPromise() Promise {
 }
 
 func (p *promise) TryComplete(result interface{}) bool {
+	if f, ok := p.Future.(*future); ok {
+		return f.tryComplete(result)
+	}
+	// Fallback if not our implementation
 	p.Complete(result)
 	return true
 }
 
 func (p *promise) TryFail(err error) bool {
+	if f, ok := p.Future.(*future); ok {
+		return f.tryFail(err)
+	}
+	// Fallback if not our implementation
 	p.Fail(err)
 	return true
 }
@@ -291,17 +337,15 @@ func NewReactiveVerticle(vertx core.Vertx) *ReactiveVerticle {
 func (rv *ReactiveVerticle) ExecuteReactive(ctx context.Context, address string, data interface{}) Future {
 	promise := NewPromise()
 
-	// Send request via event bus
-	msg, err := rv.vertx.EventBus().Request(address, data, 5*time.Second)
-	if err != nil {
-		promise.Fail(err)
-		return promise
-	}
-
-	// Handle reply asynchronously
+	// Perform request asynchronously
 	go func() {
-		// In a real implementation, we'd wait for the reply message
-		// For now, we'll complete with the message body
+		// Send request via event bus
+		msg, err := rv.vertx.EventBus().Request(address, data, 5*time.Second)
+		if err != nil {
+			promise.Fail(err)
+			return
+		}
+
 		if msg.Body() != nil {
 			promise.Complete(msg.Body())
 		} else {

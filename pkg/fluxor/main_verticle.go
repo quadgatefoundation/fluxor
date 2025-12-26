@@ -125,6 +125,8 @@ func (m *MainVerticle) Stop() error {
 }
 
 // configInjectedVerticle injects the app config into the FluxorContext before calling Start/Stop.
+// Note: This injects configuration on every Start/Stop call to ensure the context
+// has the latest configuration, even if the context is recreated (e.g. during restarts).
 type configInjectedVerticle struct {
 	inner core.Verticle
 	cfg   map[string]any
