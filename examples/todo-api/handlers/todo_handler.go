@@ -12,11 +12,11 @@ import (
 
 // TodoHandler handles todo-related requests
 type TodoHandler struct {
-	todoService *services.TodoService
+	todoService services.TodoServiceInterface
 }
 
 // NewTodoHandler creates a new todo handler
-func NewTodoHandler(todoService *services.TodoService) *TodoHandler {
+func NewTodoHandler(todoService services.TodoServiceInterface) *TodoHandler {
 	return &TodoHandler{
 		todoService: todoService,
 	}

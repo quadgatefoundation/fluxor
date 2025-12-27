@@ -10,6 +10,15 @@ import (
 	"github.com/google/uuid"
 )
 
+// TodoServiceInterface defines the interface for todo service operations
+type TodoServiceInterface interface {
+	CreateTodo(ctx context.Context, userID uuid.UUID, req models.CreateTodoRequest) (*models.Todo, error)
+	GetTodoByID(ctx context.Context, todoID, userID uuid.UUID) (*models.Todo, error)
+	ListTodos(ctx context.Context, userID uuid.UUID, page, pageSize int, completed *bool) (*models.TodoListResponse, error)
+	UpdateTodo(ctx context.Context, todoID, userID uuid.UUID, req models.UpdateTodoRequest) (*models.Todo, error)
+	DeleteTodo(ctx context.Context, todoID, userID uuid.UUID) error
+}
+
 // TodoService handles todo-related operations
 type TodoService struct {
 	db *sql.DB
