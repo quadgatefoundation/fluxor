@@ -13,6 +13,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         go-version: ['1.24']
@@ -65,12 +66,28 @@ jobs:
       timeout-minutes: 15
       run: |
         # Run tests with timeout and better error handling
-        go test -v -race -coverprofile=coverage.out -covermode=atomic -timeout 10m ./... || {
-          echo "Tests failed. Checking for specific issues..."
-          # List any test files that might have issues
+        echo "Starting tests with race detector..."
+        echo "Test timeout: 10 minutes"
+        echo "Step timeout: 15 minutes"
+        
+        # Run tests with verbose output and timeout
+        go test -v -race -coverprofile=coverage.out -covermode=atomic -timeout 10m ./... 2>&1 | tee test-output.log || {
+          echo "=========================================="
+          echo "Tests failed or timed out. Diagnostics:"
+          echo "=========================================="
+          echo ""
+          echo "Last 50 lines of test output:"
+          tail -n 50 test-output.log || echo "No test output log found"
+          echo ""
+          echo "Test files in repository:"
           find . -name "*_test.go" -type f | head -20
+          echo ""
+          echo "Checking for hanging processes..."
+          ps aux | grep -E "(go|test)" | head -10 || true
           exit 1
         }
+        
+        echo "All tests completed successfully"
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
