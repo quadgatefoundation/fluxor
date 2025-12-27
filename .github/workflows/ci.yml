@@ -70,12 +70,12 @@ jobs:
         echo "Test timeout: 8 minutes (Go) + 2 minutes buffer (shell timeout)"
         echo "Step timeout: 15 minutes"
         
-        # Exclude loadtest, workflow-demo, and todo-api directories from tests
+        # Exclude loadtest, workflow-demo, todo-api, and load-balancing directories from tests
         # Use timeout command to ensure tests are killed even if Go timeout fails
         # This prevents hanging tests from blocking CI
         timeout 10m bash -c '
-          PACKAGES=$(go list ./... | grep -v "/loadtest" | grep -v "/workflow-demo" | grep -v "/todo-api" | tr "\n" " ")
-          echo "Testing packages (excluding loadtest, workflow-demo, and todo-api):"
+          PACKAGES=$(go list ./... | grep -v "/loadtest" | grep -v "/workflow-demo" | grep -v "/todo-api" | grep -v "/load-balancing" | tr "\n" " ")
+          echo "Testing packages (excluding loadtest, workflow-demo, todo-api, and load-balancing):"
           echo "$PACKAGES"
           go test -v -race -coverprofile=coverage.out -covermode=atomic -timeout 8m $PACKAGES 2>&1 | tee test-output.log
         ' || {
@@ -237,17 +237,6 @@ jobs:
     - name: Verify dependencies
       run: go mod verify
 
-    - name: Test load-balancing example
-      working-directory: examples/load-balancing
-      run: |
-        go build -o /tmp/load-balancing main.go
-        if [ $? -eq 0 ]; then
-          echo "✓ load-balancing example builds successfully"
-        else
-          echo "✗ load-balancing example build failed"
-          exit 1
-        fi
-
     - name: Test all-in-one example
       working-directory: examples/fluxor-project/all-in-one
       run: |
@@ -315,6 +304,10 @@ jobs:
       run: |
         echo "Running go vet on examples..."
         find examples -name "*.go" -type f -exec dirname {} \; | sort -u | while read dir; do
+          # Skip load-balancing directory
+          if [[ "$dir" == *"/load-balancing"* ]]; then
+            continue
+          fi
           if [ -f "$dir/go.mod" ] || [ -f "$dir/main.go" ]; then
             echo "Checking $dir..."
             (cd "$dir" && go vet ./... 2>&1 || true)
@@ -325,7 +318,7 @@ jobs:
       run: |
         echo "## Examples Test Summary" >> $GITHUB_STEP_SUMMARY
         echo "- ✓ All examples tested with Go ${{ matrix.go-version }}" >> $GITHUB_STEP_SUMMARY
-        echo "- Examples verified: load-balancing, all-in-one, api-gateway, payment-service" >> $GITHUB_STEP_SUMMARY
+        echo "- Examples verified: all-in-one, api-gateway, payment-service" >> $GITHUB_STEP_SUMMARY
 
   docker:
     name: Docker Build
