@@ -29,9 +29,13 @@ func NotNil(ptr interface{}, name string) {
 	if ptr == nil {
 		panic(fmt.Errorf("fail-fast: %s is nil", name))
 	}
-	// Check for typed nil pointers (e.g., *string that is nil)
+	// Check for typed nil pointers and nil functions
 	v := reflect.ValueOf(ptr)
 	if v.Kind() == reflect.Ptr && v.IsNil() {
+		panic(fmt.Errorf("fail-fast: %s is nil", name))
+	}
+	// Check for nil functions (function types can be nil)
+	if v.Kind() == reflect.Func && v.IsNil() {
 		panic(fmt.Errorf("fail-fast: %s is nil", name))
 	}
 }
