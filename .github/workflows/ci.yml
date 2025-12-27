@@ -26,6 +26,13 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: ${{ matrix.go-version }}
+        cache-dependency-path: go.sum
+
+    - name: Prepare cache directories
+      run: |
+        # Ensure cache directories exist before cache restore
+        mkdir -p ~/.cache/go-build
+        mkdir -p ~/go/pkg/mod
 
     - name: Cache Go modules
       uses: actions/cache@v4
@@ -39,11 +46,15 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-${{ matrix.go-version }}-
     
-    - name: Clean cache on error
+    - name: Clean cache directories
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
+        # Clean cache directories if cache restore failed
         rm -rf ~/.cache/go-build || true
         rm -rf ~/go/pkg/mod || true
+        # Ensure directories exist with proper permissions
+        mkdir -p ~/.cache/go-build
+        mkdir -p ~/go/pkg/mod
 
     - name: Download dependencies
       run: go mod download
@@ -70,12 +81,12 @@ jobs:
         echo "Test timeout: 8 minutes (Go) + 2 minutes buffer (shell timeout)"
         echo "Step timeout: 15 minutes"
         
-        # Exclude loadtest, workflow-demo, todo-api, and load-balancing directories from tests
+        # Exclude loadtest, workflow-demo, and todo-api directories from tests
         # Use timeout command to ensure tests are killed even if Go timeout fails
         # This prevents hanging tests from blocking CI
         timeout 10m bash -c '
-          PACKAGES=$(go list ./... | grep -v "/loadtest" | grep -v "/workflow-demo" | grep -v "/todo-api" | grep -v "/load-balancing" | tr "\n" " ")
-          echo "Testing packages (excluding loadtest, workflow-demo, todo-api, and load-balancing):"
+          PACKAGES=$(go list ./... | grep -v "/loadtest" | grep -v "/workflow-demo" | grep -v "/todo-api" | tr "\n" " ")
+          echo "Testing packages (excluding loadtest, workflow-demo, and todo-api):"
           echo "$PACKAGES"
           go test -v -race -coverprofile=coverage.out -covermode=atomic -timeout 8m $PACKAGES 2>&1 | tee test-output.log
         ' || {
@@ -225,17 +236,32 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-${{ matrix.go-version }}-
     
-    - name: Clean cache on error
+    - name: Clean cache directories
       if: steps.cache-examples.outputs.cache-hit != 'true'
       run: |
+        # Clean cache directories if cache restore failed
         rm -rf ~/.cache/go-build || true
         rm -rf ~/go/pkg/mod || true
+        # Ensure directories exist with proper permissions
+        mkdir -p ~/.cache/go-build
+        mkdir -p ~/go/pkg/mod
 
     - name: Download dependencies
       run: go mod download
 
     - name: Verify dependencies
       run: go mod verify
+
+    - name: Test load-balancing example
+      working-directory: examples/load-balancing
+      run: |
+        go build -o /tmp/load-balancing main.go
+        if [ $? -eq 0 ]; then
+          echo "✓ load-balancing example builds successfully"
+        else
+          echo "✗ load-balancing example build failed"
+          exit 1
+        fi
 
     - name: Test all-in-one example
       working-directory: examples/fluxor-project/all-in-one
@@ -304,10 +330,6 @@ jobs:
       run: |
         echo "Running go vet on examples..."
         find examples -name "*.go" -type f -exec dirname {} \; | sort -u | while read dir; do
-          # Skip load-balancing directory
-          if [[ "$dir" == *"/load-balancing"* ]]; then
-            continue
-          fi
           if [ -f "$dir/go.mod" ] || [ -f "$dir/main.go" ]; then
             echo "Checking $dir..."
             (cd "$dir" && go vet ./... 2>&1 || true)
@@ -318,7 +340,7 @@ jobs:
       run: |
         echo "## Examples Test Summary" >> $GITHUB_STEP_SUMMARY
         echo "- ✓ All examples tested with Go ${{ matrix.go-version }}" >> $GITHUB_STEP_SUMMARY
-        echo "- Examples verified: all-in-one, api-gateway, payment-service" >> $GITHUB_STEP_SUMMARY
+        echo "- Examples verified: load-balancing, all-in-one, api-gateway, payment-service" >> $GITHUB_STEP_SUMMARY
 
   docker:
     name: Docker Build
@@ -342,7 +364,23 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    - name: Test Docker image
+    - name: Test Docker image (enterprise)
       run: |
         docker run --rm fluxor-enterprise:latest --version || true
         docker images | grep fluxor-enterprise
+
+    - name: Build Docker image (load-balancing)
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./examples/load-balancing/Dockerfile
+        push: false
+        tags: fluxor-load-balancing:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Test Docker image (load-balancing)
+      run: |
+        echo "Verifying load-balancing Docker image..."
+        docker images | grep fluxor-load-balancing
+        echo "✓ load-balancing Docker image built successfully"
