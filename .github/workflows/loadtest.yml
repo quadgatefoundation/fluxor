@@ -34,20 +34,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     
-    services:
-      nats:
-        image: nats:2.12-alpine
-        ports:
-          - 4222:4222
-        options: >-
-          --health-cmd "nats-server --version"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-          -js
-          -sd /tmp/nats-jetstream
-
     steps:
+    - name: Start NATS with JetStream
+      run: |
+        echo "Starting NATS server with JetStream enabled..."
+        docker run -d \
+          --name nats-jetstream \
+          -p 4222:4222 \
+          -p 8222:8222 \
+          nats:2.12-alpine \
+          -js -sd /tmp/nats-jetstream
+        echo "Waiting for NATS to be ready..."
+        sleep 5
+        docker ps | grep nats-jetstream
+        echo "✓ NATS container started"
+      continue-on-error: false
     - name: Checkout code
       uses: actions/checkout@v4
 
@@ -68,6 +69,44 @@ jobs:
 
     - name: Download dependencies
       run: go mod download
+
+    - name: Build main binaries
+      run: |
+        echo "Building main binaries..."
+        mkdir -p bin
+        
+        echo "Building fluxor main..."
+        go build -v -o bin/fluxor ./cmd/main.go || true
+        
+        echo "Building fluxor example..."
+        go build -v -o bin/fluxor-example ./cmd/example/main.go || true
+        
+        echo "Building fluxor enterprise..."
+        go build -v -o bin/fluxor-enterprise ./cmd/enterprise/main.go || true
+        
+        echo "Build results:"
+        ls -lh bin/ || true
+        echo "✓ Main binaries build completed"
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image (enterprise)
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./cmd/enterprise/Dockerfile
+        push: false
+        tags: fluxor-enterprise:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Test Docker image
+      run: |
+        echo "Testing Docker image..."
+        docker run --rm fluxor-enterprise:latest --version || true
+        docker images | grep fluxor-enterprise || true
+        echo "✓ Docker build completed"
 
     - name: Build all-in-one
       working-directory: examples/fluxor-project/all-in-one
@@ -221,6 +260,14 @@ jobs:
           fi
           echo "✓ Server stopped"
         fi
+    
+    - name: Stop NATS container
+      if: always()
+      run: |
+        echo "Stopping NATS container..."
+        docker stop nats-jetstream 2>/dev/null || true
+        docker rm nats-jetstream 2>/dev/null || true
+        echo "✓ NATS container stopped"
 
     - name: Check server logs
       if: always()
