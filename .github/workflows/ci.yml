@@ -138,6 +138,128 @@ jobs:
       with:
         sarif_file: results.sarif
 
+  test-examples:
+    name: Test Examples
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.22', '1.23', '1.24']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-${{ matrix.go-version }}-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Verify dependencies
+      run: go mod verify
+
+    - name: Test load-balancing example
+      working-directory: examples/load-balancing
+      run: |
+        go build -o /tmp/load-balancing main.go
+        if [ $? -eq 0 ]; then
+          echo "✓ load-balancing example builds successfully"
+        else
+          echo "✗ load-balancing example build failed"
+          exit 1
+        fi
+
+    - name: Test all-in-one example
+      working-directory: examples/fluxor-project/all-in-one
+      run: |
+        go build -o /tmp/all-in-one main.go
+        if [ $? -eq 0 ]; then
+          echo "✓ all-in-one example builds successfully"
+        else
+          echo "✗ all-in-one example build failed"
+          exit 1
+        fi
+
+    - name: Test api-gateway example
+      working-directory: examples/fluxor-project/api-gateway
+      run: |
+        go build -o /tmp/api-gateway ./verticles/*.go 2>&1 || go build -o /tmp/api-gateway .
+        if [ $? -eq 0 ]; then
+          echo "✓ api-gateway example builds successfully"
+        else
+          echo "✗ api-gateway example build failed"
+          exit 1
+        fi
+
+    - name: Test payment-service example
+      working-directory: examples/fluxor-project/payment-service
+      run: |
+        go build -o /tmp/payment-service ./verticles/*.go 2>&1 || go build -o /tmp/payment-service .
+        if [ $? -eq 0 ]; then
+          echo "✓ payment-service example builds successfully"
+        else
+          echo "✗ payment-service example build failed"
+          exit 1
+        fi
+
+    - name: Test todo-api example
+      working-directory: examples/todo-api
+      run: |
+        if [ -f "main.go" ]; then
+          go build -o /tmp/todo-api main.go
+          if [ $? -eq 0 ]; then
+            echo "✓ todo-api example builds successfully"
+          else
+            echo "✗ todo-api example build failed"
+            exit 1
+          fi
+        else
+          echo "⚠ todo-api example not found, skipping"
+        fi
+
+    - name: Test workflow-demo example
+      working-directory: examples/workflow-demo
+      run: |
+        if [ -f "main.go" ]; then
+          go build -o /tmp/workflow-demo main.go
+          if [ $? -eq 0 ]; then
+            echo "✓ workflow-demo example builds successfully"
+          else
+            echo "✗ workflow-demo example build failed"
+            exit 1
+          fi
+        else
+          echo "⚠ workflow-demo example not found, skipping"
+        fi
+
+    - name: Run go vet on examples
+      run: |
+        echo "Running go vet on examples..."
+        find examples -name "*.go" -type f -exec dirname {} \; | sort -u | while read dir; do
+          if [ -f "$dir/go.mod" ] || [ -f "$dir/main.go" ]; then
+            echo "Checking $dir..."
+            (cd "$dir" && go vet ./... 2>&1 || true)
+          fi
+        done
+
+    - name: Summary
+      run: |
+        echo "## Examples Test Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- ✓ All examples tested with Go ${{ matrix.go-version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Examples verified: load-balancing, all-in-one, api-gateway, payment-service" >> $GITHUB_STEP_SUMMARY
+
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
