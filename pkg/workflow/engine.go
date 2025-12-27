@@ -59,6 +59,11 @@ func (e *Engine) RegisterNodeHandler(nodeType NodeType, handler NodeHandler) {
 	e.registry.Register(nodeType, handler)
 }
 
+// Registry returns the node registry for external registration
+func (e *Engine) Registry() NodeRegistry {
+	return e.registry
+}
+
 // RegisterWorkflow registers a workflow definition.
 func (e *Engine) RegisterWorkflow(def *WorkflowDefinition) error {
 	if def.ID == "" {

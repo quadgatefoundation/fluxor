@@ -1,0 +1,42 @@
+{
+	"id": "ai-embedding-example",
+	"name": "AI Embedding Example",
+	"description": "Example workflow demonstrating AI embeddings with aimodule",
+	"nodes": [
+		{
+			"id": "trigger",
+			"type": "webhook",
+			"name": "Webhook Trigger"
+		},
+		{
+			"id": "create-embeddings",
+			"type": "aimodule.embed",
+			"name": "Create Embeddings",
+			"config": {
+				"provider": "openai",
+				"model": "text-embedding-ada-002",
+				"input": ["{{ $.input.text }}"],
+				"outputField": "embeddings"
+			},
+			"next": ["process-embeddings"]
+		},
+		{
+			"id": "process-embeddings",
+			"type": "set",
+			"name": "Process Embeddings",
+			"config": {
+				"values": {
+					"embedding": "{{ $.embeddings[0] }}",
+					"dimension": "{{ $.embeddings[0].length }}"
+				}
+			},
+			"next": ["output"]
+		},
+		{
+			"id": "output",
+			"type": "respond",
+			"name": "Output"
+		}
+	]
+}
+

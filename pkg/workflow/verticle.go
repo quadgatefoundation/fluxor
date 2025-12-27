@@ -71,6 +71,11 @@ func (v *WorkflowVerticle) Start(ctx core.FluxorContext) error {
 	v.engine.RegisterNodeHandler("map", MapNodeHandler(v.functionRegistry))
 	v.engine.RegisterNodeHandler("reduce", ReduceNodeHandler(v.functionRegistry))
 
+	// Register AI module nodes
+	v.engine.RegisterNodeHandler(NodeType("aimodule.chat"), AIChatNodeHandler)
+	v.engine.RegisterNodeHandler(NodeType("aimodule.embed"), AIEmbedNodeHandler)
+	v.engine.RegisterNodeHandler(NodeType("aimodule.toolcall"), AIChatNodeHandler)
+
 	// Load workflows from config
 	if workflows, ok := ctx.Config()["workflows"].([]interface{}); ok {
 		for _, wf := range workflows {

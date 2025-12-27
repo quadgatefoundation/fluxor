@@ -1,0 +1,74 @@
+{
+	"id": "ai-tool-calling-example",
+	"name": "AI Tool Calling Example",
+	"description": "Example workflow demonstrating AI tool calling with aimodule",
+	"nodes": [
+		{
+			"id": "trigger",
+			"type": "webhook",
+			"name": "Webhook Trigger"
+		},
+		{
+			"id": "ai-with-tools",
+			"type": "aimodule.chat",
+			"name": "AI with Tool Calling",
+			"config": {
+				"provider": "openai",
+				"model": "gpt-4o",
+				"messages": [
+					{
+						"role": "system",
+						"content": "You are a helpful assistant. Use tools when needed."
+					},
+					{
+						"role": "user",
+						"content": "{{ $.input.query }}"
+					}
+				],
+				"temperature": 0.7,
+				"tools": [
+					{
+						"type": "function",
+						"function": {
+							"name": "get_weather",
+							"description": "Get the current weather for a location",
+							"parameters": {
+								"type": "object",
+								"properties": {
+									"location": {
+										"type": "string",
+										"description": "The city and state, e.g. San Francisco, CA"
+									},
+									"unit": {
+										"type": "string",
+										"enum": ["celsius", "fahrenheit"],
+										"description": "Temperature unit"
+									}
+								},
+								"required": ["location"]
+							}
+						}
+					}
+				],
+				"toolChoice": "auto",
+				"responseField": "response"
+			},
+			"next": ["handle-tool-calls"]
+		},
+		{
+			"id": "handle-tool-calls",
+			"type": "function",
+			"name": "Handle Tool Calls",
+			"config": {
+				"code": "if (input.tool_calls && input.tool_calls.length > 0) { return { hasToolCalls: true, toolCalls: input.tool_calls }; } return { hasToolCalls: false, response: input.response };"
+			},
+			"next": ["output"]
+		},
+		{
+			"id": "output",
+			"type": "respond",
+			"name": "Output"
+		}
+	]
+}
+
