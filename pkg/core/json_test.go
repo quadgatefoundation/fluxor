@@ -107,3 +107,81 @@ func TestJSONEncodeDecode(t *testing.T) {
 		t.Errorf("decoded name = %v, want %v", decoded["name"], original["name"])
 	}
 }
+
+func TestJSONEncode_FailFast_NilValue(t *testing.T) {
+	_, err := JSONEncode(nil)
+	if err == nil {
+		t.Error("JSONEncode() should fail-fast with nil value")
+	}
+	if err != nil {
+		if e, ok := err.(*EventBusError); ok {
+			if e.Code != "INVALID_INPUT" {
+				t.Errorf("Error code = %v, want 'INVALID_INPUT'", e.Code)
+			}
+		}
+	}
+}
+
+func TestJSONDecode_FailFast_EmptyData(t *testing.T) {
+	var result map[string]string
+	err := JSONDecode([]byte{}, &result)
+	if err == nil {
+		t.Error("JSONDecode() should fail-fast with empty data")
+	}
+	if err != nil {
+		if e, ok := err.(*EventBusError); ok {
+			if e.Code != "INVALID_INPUT" {
+				t.Errorf("Error code = %v, want 'INVALID_INPUT'", e.Code)
+			}
+		}
+	}
+}
+
+func TestJSONDecode_FailFast_NilTarget(t *testing.T) {
+	data := []byte(`{"key":"value"}`)
+	err := JSONDecode(data, nil)
+	if err == nil {
+		t.Error("JSONDecode() should fail-fast with nil target")
+	}
+	if err != nil {
+		if e, ok := err.(*EventBusError); ok {
+			if e.Code != "INVALID_INPUT" {
+				t.Errorf("Error code = %v, want 'INVALID_INPUT'", e.Code)
+			}
+		}
+	}
+}
+
+func TestJSONDecode_FailFast_InvalidJSON(t *testing.T) {
+	var result map[string]string
+	invalidJSON := []byte(`{invalid json}`)
+	err := JSONDecode(invalidJSON, &result)
+	if err == nil {
+		t.Error("JSONDecode() should fail-fast with invalid JSON")
+	}
+}
+
+func TestJSONEncode_ValidTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		v    interface{}
+	}{
+		{"string", "test"},
+		{"int", 42},
+		{"float", 3.14},
+		{"bool", true},
+		{"slice", []string{"a", "b"}},
+		{"map", map[string]int{"a": 1}},
+		{"struct", struct{ Name string }{"test"}},
+		{"nested map", map[string]interface{}{"nested": map[string]int{"a": 1}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := JSONEncode(tt.v)
+			if err != nil {
+				t.Errorf("JSONEncode() error = %v for type %T", err, tt.v)
+			}
+		})
+	}
+}

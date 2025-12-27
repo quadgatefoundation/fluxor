@@ -89,4 +89,3 @@ func TestOpenAINodeHandler_WithAPIKey(t *testing.T) {
 		t.Error("API key should be accessible from config")
 	}
 }
-

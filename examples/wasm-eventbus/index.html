@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fluxor WASM EventBus Client Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        h2 {
+            color: #666;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        textarea {
+            min-height: 100px;
+            font-family: monospace;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        .messages {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .message {
+            padding: 8px;
+            margin-bottom: 8px;
+            border-left: 3px solid #007bff;
+            background: white;
+        }
+        .message.published {
+            border-left-color: #28a745;
+        }
+        .message.received {
+            border-left-color: #ffc107;
+        }
+        .message.error {
+            border-left-color: #dc3545;
+        }
+        .timestamp {
+            color: #999;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Fluxor WASM EventBus Client Demo</h1>
+        <div id="status" class="status disconnected">Disconnected</div>
+        <button id="connectBtn" onclick="connect()">Connect</button>
+        <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+    </div>
+
+    <div class="container">
+        <h2>Publish Message</h2>
+        <div class="form-group">
+            <label>Address:</label>
+            <input type="text" id="publishAddress" value="user.created" placeholder="e.g., user.created">
+        </div>
+        <div class="form-group">
+            <label>Body (JSON):</label>
+            <textarea id="publishBody">{"userId": 123, "name": "John Doe", "email": "john@example.com"}</textarea>
+        </div>
+        <button onclick="publish()">Publish</button>
+    </div>
+
+    <div class="container">
+        <h2>Send Message (Point-to-Point)</h2>
+        <div class="form-group">
+            <label>Address:</label>
+            <input type="text" id="sendAddress" value="echo" placeholder="e.g., echo">
+        </div>
+        <div class="form-group">
+            <label>Body (JSON):</label>
+            <textarea id="sendBody">{"message": "Hello, EventBus!"}</textarea>
+        </div>
+        <button onclick="send()">Send</button>
+    </div>
+
+    <div class="container">
+        <h2>Request/Reply</h2>
+        <div class="form-group">
+            <label>Address:</label>
+            <input type="text" id="requestAddress" value="echo" placeholder="e.g., echo">
+        </div>
+        <div class="form-group">
+            <label>Body (JSON):</label>
+            <textarea id="requestBody">{"message": "Request test"}</textarea>
+        </div>
+        <button onclick="request()">Request</button>
+    </div>
+
+    <div class="container">
+        <h2>Subscribe</h2>
+        <div class="form-group">
+            <label>Address:</label>
+            <input type="text" id="subscribeAddress" value="user.created" placeholder="e.g., user.created">
+        </div>
+        <button onclick="subscribe()">Subscribe</button>
+        <button onclick="unsubscribe()">Unsubscribe</button>
+    </div>
+
+    <div class="container">
+        <h2>Messages</h2>
+        <div id="messages" class="messages"></div>
+        <button onclick="clearMessages()">Clear</button>
+    </div>
+
+    <!-- Load WASM exec helper -->
+    <script src="/dist/wasm_exec.js"></script>
+    <!-- Load JavaScript bindings -->
+    <script src="/dist/bindings.js"></script>
+    <!-- Load WASM module -->
+    <script>
+        let client = null;
+        let subscriptions = new Map();
+
+        // Initialize WASM
+        async function initWASM() {
+            try {
+                const go = new Go();
+                const result = await WebAssembly.instantiateStreaming(
+                    fetch("/dist/fluxor.wasm"),
+                    go.importObject
+                );
+                go.run(result.instance);
+                console.log("WASM loaded successfully");
+            } catch (error) {
+                console.error("Failed to load WASM:", error);
+                addMessage("error", "Failed to load WASM: " + error.message);
+            }
+        }
+
+        // Connect to EventBus
+        async function connect() {
+            try {
+                const wsURL = "/eventbus/ws";
+                client = new FluxorEventBusClient(wsURL);
+                await client.connect();
+                
+                updateStatus(true);
+                document.getElementById("connectBtn").disabled = true;
+                document.getElementById("disconnectBtn").disabled = false;
+                addMessage("published", "Connected to EventBus");
+            } catch (error) {
+                console.error("Connection error:", error);
+                addMessage("error", "Connection error: " + error.message);
+            }
+        }
+
+        // Disconnect
+        function disconnect() {
+            if (client) {
+                client.close();
+                client = null;
+                updateStatus(false);
+                document.getElementById("connectBtn").disabled = false;
+                document.getElementById("disconnectBtn").disabled = true;
+                subscriptions.clear();
+                addMessage("published", "Disconnected from EventBus");
+            }
+        }
+
+        // Publish message
+        function publish() {
+            if (!client) {
+                alert("Not connected");
+                return;
+            }
+
+            const address = document.getElementById("publishAddress").value;
+            const bodyText = document.getElementById("publishBody").value;
+
+            try {
+                const body = JSON.parse(bodyText);
+                client.publish(address, body);
+                addMessage("published", `Published to ${address}: ${JSON.stringify(body, null, 2)}`);
+            } catch (error) {
+                addMessage("error", "Invalid JSON: " + error.message);
+            }
+        }
+
+        // Send message
+        function send() {
+            if (!client) {
+                alert("Not connected");
+                return;
+            }
+
+            const address = document.getElementById("sendAddress").value;
+            const bodyText = document.getElementById("sendBody").value;
+
+            try {
+                const body = JSON.parse(bodyText);
+                client.send(address, body);
+                addMessage("published", `Sent to ${address}: ${JSON.stringify(body, null, 2)}`);
+            } catch (error) {
+                addMessage("error", "Invalid JSON: " + error.message);
+            }
+        }
+
+        // Request/Reply
+        async function request() {
+            if (!client) {
+                alert("Not connected");
+                return;
+            }
+
+            const address = document.getElementById("requestAddress").value;
+            const bodyText = document.getElementById("requestBody").value;
+
+            try {
+                const body = JSON.parse(bodyText);
+                const result = await client.request(address, body, 5000);
+                addMessage("received", `Reply from ${address}: ${JSON.stringify(result, null, 2)}`);
+            } catch (error) {
+                addMessage("error", "Request error: " + error.message);
+            }
+        }
+
+        // Subscribe
+        function subscribe() {
+            if (!client) {
+                alert("Not connected");
+                return;
+            }
+
+            const address = document.getElementById("subscribeAddress").value;
+            
+            if (subscriptions.has(address)) {
+                alert("Already subscribed to " + address);
+                return;
+            }
+
+            const unsubscribe = client.subscribe(address, (msg) => {
+                addMessage("received", `Message from ${address}: ${JSON.stringify(msg.body, null, 2)}`);
+            });
+
+            subscriptions.set(address, unsubscribe);
+            addMessage("published", `Subscribed to ${address}`);
+        }
+
+        // Unsubscribe
+        function unsubscribe() {
+            if (!client) {
+                alert("Not connected");
+                return;
+            }
+
+            const address = document.getElementById("subscribeAddress").value;
+            
+            if (!subscriptions.has(address)) {
+                alert("Not subscribed to " + address);
+                return;
+            }
+
+            const unsubscribe = subscriptions.get(address);
+            unsubscribe();
+            subscriptions.delete(address);
+            addMessage("published", `Unsubscribed from ${address}`);
+        }
+
+        // Update status
+        function updateStatus(connected) {
+            const statusEl = document.getElementById("status");
+            if (connected) {
+                statusEl.textContent = "Connected";
+                statusEl.className = "status connected";
+            } else {
+                statusEl.textContent = "Disconnected";
+                statusEl.className = "status disconnected";
+            }
+        }
+
+        // Add message to log
+        function addMessage(type, message) {
+            const messagesEl = document.getElementById("messages");
+            const messageEl = document.createElement("div");
+            messageEl.className = "message " + type;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            messageEl.innerHTML = `
+                <div class="timestamp">[${timestamp}]</div>
+                <div>${message}</div>
+            `;
+            
+            messagesEl.insertBefore(messageEl, messagesEl.firstChild);
+        }
+
+        // Clear messages
+        function clearMessages() {
+            document.getElementById("messages").innerHTML = "";
+        }
+
+        // Initialize on load
+        window.addEventListener("load", () => {
+            initWASM();
+        });
+    </script>
+</body>
+</html>
+

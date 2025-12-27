@@ -6,8 +6,8 @@ import (
 
 	"github.com/fluxorio/fluxor/pkg/core"
 	"github.com/fluxorio/fluxor/pkg/fluxor"
-	"github.com/fluxorio/fluxor/pkg/workflow"
 	"github.com/fluxorio/fluxor/pkg/web"
+	"github.com/fluxorio/fluxor/pkg/workflow"
 )
 
 // Example: Using Cursor AI node in workflow
@@ -60,7 +60,7 @@ func (v *CursorGateway) Start(ctx core.FluxorContext) error {
 			"model":       "gpt-4",
 			"prompt":      "{{ $.input.prompt }}",
 			"temperature": 0.7,
-			"maxTokens":  2000,
+			"maxTokens":   2000,
 		}).
 		Next("format").
 		Done().
@@ -68,7 +68,7 @@ func (v *CursorGateway) Start(ctx core.FluxorContext) error {
 		Name("Format Response").
 		Config(map[string]interface{}{
 			"values": map[string]interface{}{
-				"success": true,
+				"success":  true,
 				"provider": "cursor",
 			},
 		}).
@@ -124,4 +124,3 @@ func (v *CursorGateway) Stop(ctx core.FluxorContext) error {
 	}
 	return nil
 }
-

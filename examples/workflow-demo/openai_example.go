@@ -6,8 +6,8 @@ import (
 
 	"github.com/fluxorio/fluxor/pkg/core"
 	"github.com/fluxorio/fluxor/pkg/fluxor"
-	"github.com/fluxorio/fluxor/pkg/workflow"
 	"github.com/fluxorio/fluxor/pkg/web"
+	"github.com/fluxorio/fluxor/pkg/workflow"
 )
 
 // Example: Using OpenAI node in workflow
@@ -56,10 +56,10 @@ func (v *OpenAIGateway) Start(ctx core.FluxorContext) error {
 		AddNode("openai", "openai").
 		Name("OpenAI Chat").
 		Config(map[string]interface{}{
-			"model":  "gpt-3.5-turbo",
-			"prompt": "{{ $.input.message }}",
+			"model":       "gpt-3.5-turbo",
+			"prompt":      "{{ $.input.message }}",
 			"temperature": 0.7,
-			"maxTokens": 500,
+			"maxTokens":   500,
 		}).
 		Next("format").
 		Done().
@@ -122,4 +122,3 @@ func (v *OpenAIGateway) Stop(ctx core.FluxorContext) error {
 	}
 	return nil
 }
-
