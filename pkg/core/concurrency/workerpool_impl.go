@@ -90,8 +90,8 @@ func (wp *defaultWorkerPool) worker(id int) {
 
 			// Execute task
 			if err := task.Execute(wp.ctx); err != nil {
-				// Don't log context.Canceled - it's expected during shutdown
-				if !errors.Is(err, context.Canceled) {
+				// Don't log context.Canceled or ErrMailboxClosed - they're expected during shutdown
+				if !errors.Is(err, context.Canceled) && !errors.Is(err, ErrMailboxClosed) {
 					wp.logger.Errorf("worker %d: task %s failed: %v", id, task.Name(), err)
 				}
 			}

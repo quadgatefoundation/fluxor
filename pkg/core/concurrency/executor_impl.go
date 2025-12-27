@@ -91,8 +91,8 @@ func (e *defaultExecutor) worker(id int) {
 
 			// Execute task
 			if err := task.Execute(e.ctx); err != nil {
-				// Don't log context.Canceled - it's expected during shutdown
-				if !errors.Is(err, context.Canceled) {
+				// Don't log context.Canceled or ErrMailboxClosed - they're expected during shutdown
+				if !errors.Is(err, context.Canceled) && !errors.Is(err, ErrMailboxClosed) {
 					e.logger.Errorf("task %s failed: %v", task.Name(), err)
 				}
 			}
