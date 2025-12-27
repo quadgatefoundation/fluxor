@@ -361,6 +361,7 @@ jobs:
         context: .
         file: ./cmd/enterprise/Dockerfile
         push: false
+        load: true
         tags: fluxor-enterprise:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
@@ -376,6 +377,7 @@ jobs:
         context: .
         file: ./examples/load-balancing/Dockerfile
         push: false
+        load: true
         tags: fluxor-load-balancing:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
