@@ -109,6 +109,14 @@ func TestFluxorContext_Undeploy(t *testing.T) {
 		t.Errorf("Undeploy() error = %v", err)
 	}
 
+	// Wait for async stop to complete
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if verticle.isStopped() {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if !verticle.isStopped() {
 		t.Error("Verticle should be stopped")
 	}
