@@ -288,6 +288,7 @@ func TestUserServiceVerticle(t *testing.T) {
 	// Create vertx instance
 	ctx := context.Background()
 	vertx := core.NewGoCMD(ctx)
+	defer vertx.Close()
 	logger := core.NewDefaultLogger()
 
 	dbConfig := db.PoolConfig{
@@ -315,6 +316,10 @@ func TestUserServiceVerticle(t *testing.T) {
 	if deploymentID == "" {
 		t.Error("Deployment ID should not be empty")
 	}
+
+	// Wait for deployment to complete (Start() runs in goroutine)
+	// Deployment state transitions from PENDING to STARTED when Start() completes
+	time.Sleep(100 * time.Millisecond)
 
 	// Test Undeploy (which calls Stop internally)
 	err = vertx.UndeployVerticle(deploymentID)
