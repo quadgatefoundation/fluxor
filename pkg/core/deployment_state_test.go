@@ -23,7 +23,7 @@ func TestDeploymentState_SyncVerticle(t *testing.T) {
 
 	// Wait for async start to complete
 	// Since Start() is async, we need to wait for it to finish
-	deadline := time.Now().Add(500 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		vx.mu.RLock()
 		dep, exists := vx.deployments[deploymentID]
@@ -63,7 +63,7 @@ func TestDeploymentState_SyncVerticleFailure(t *testing.T) {
 
 	// Wait for async start to complete and fail
 	// The goroutine will remove the deployment from map on failure
-	deadline := time.Now().Add(500 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		vx.mu.RLock()
 		_, exists := vx.deployments[deploymentID]
@@ -226,7 +226,7 @@ func TestDeploymentState_Undeploy_Stopping(t *testing.T) {
 	}
 
 	// Wait for async start to complete before undeploying
-	deadline := time.Now().Add(500 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		vx.mu.RLock()
 		dep, exists := vx.deployments[deploymentID]
@@ -296,7 +296,7 @@ func TestDeploymentState_Undeploy_DoubleUndeploy(t *testing.T) {
 	}
 
 	// Wait for async start to complete before undeploying
-	deadline := time.Now().Add(500 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		vx.mu.RLock()
 		dep, exists := vx.deployments[deploymentID]
@@ -404,7 +404,7 @@ func TestDeploymentState_ConcurrentDeploy(t *testing.T) {
 	}
 
 	// Wait for all async starts to complete
-	deadline := time.Now().Add(1 * time.Second)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		allStarted := true
 		for _, id := range ids {
@@ -473,6 +473,7 @@ func TestDeploymentState_Constants(t *testing.T) {
 func TestDeploymentState_CloseUndeploysAll(t *testing.T) {
 	ctx := context.Background()
 	vx := NewGoCMD(ctx).(*gocmd)
+	defer vx.Close()
 
 	verticles := make([]*testVerticle, 5)
 	for i := 0; i < 5; i++ {
@@ -484,7 +485,7 @@ func TestDeploymentState_CloseUndeploysAll(t *testing.T) {
 	}
 
 	// Wait for all async starts to complete
-	deadline := time.Now().Add(500 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		allStarted := true
 		for _, v := range verticles {

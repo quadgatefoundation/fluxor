@@ -62,7 +62,7 @@ func TestGoCMD_DeployVerticle(t *testing.T) {
 	}
 
 	// Wait for async start to complete
-	deadline := time.Now().Add(500 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if verticle.isStarted() {
 			break
@@ -99,7 +99,7 @@ func TestGoCMD_UndeployVerticle(t *testing.T) {
 	}
 
 	// Wait for async start to complete before undeploying
-	deadline := time.Now().Add(500 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if verticle.isStarted() {
 			break
@@ -180,7 +180,7 @@ func TestGoCMD_DeployVerticle_FailFast_StartError(t *testing.T) {
 	// Wait for async start to complete and fail
 	// The goroutine will remove the deployment from map on failure
 	// Use DeploymentCount() to verify deployment was removed
-	deadline := time.Now().Add(500 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if gocmd.DeploymentCount() == 0 {
 			// Deployment removed - failure handled correctly

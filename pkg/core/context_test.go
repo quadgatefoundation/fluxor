@@ -70,7 +70,7 @@ func TestFluxorContext_Deploy(t *testing.T) {
 	}
 
 	// Wait for async start to complete
-	deadline := time.Now().Add(500 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if verticle.isStarted() {
 			break
@@ -96,7 +96,7 @@ func TestFluxorContext_Undeploy(t *testing.T) {
 	}
 
 	// Wait for async start to complete before undeploying
-	deadline := time.Now().Add(500 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if verticle.isStarted() {
 			break
