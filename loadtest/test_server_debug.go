@@ -28,16 +28,16 @@ func main() {
 	log.Println("Port 8080 is available")
 
 	ctx := context.Background()
-	log.Println("Creating Vertx...")
-	vertx := core.NewVertx(ctx)
-	log.Println("Vertx created")
+	log.Println("Creating GoCMD...")
+	gocmd := core.NewGoCMD(ctx)
+	log.Println("GoCMD created")
 
 	log.Println("Creating server config...")
 	config := web.DefaultFastHTTPServerConfig(":8080")
 	log.Printf("Config: %+v", config)
 
 	log.Println("Creating FastHTTP server...")
-	server := web.NewFastHTTPServer(vertx, config)
+	server := web.NewFastHTTPServer(gocmd, config)
 	log.Println("Server created")
 
 	router := server.FastRouter()
@@ -67,8 +67,8 @@ func main() {
 	server.SetHandler(func(ctx *fasthttp.RequestCtx) {
 		reqCtx := &web.FastRequestContext{
 			RequestCtx: ctx,
-			Vertx:      vertx,
-			EventBus:   vertx.EventBus(),
+			GoCMD:      gocmd,
+			EventBus:   gocmd.EventBus(),
 			Params:     make(map[string]string),
 		}
 		router.ServeFastHTTP(reqCtx)

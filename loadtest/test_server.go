@@ -16,10 +16,10 @@ import (
 
 func main() {
 	ctx := context.Background()
-	vertx := core.NewVertx(ctx)
+	gocmd := core.NewGoCMD(ctx)
 
 	config := web.DefaultFastHTTPServerConfig(":8080")
-	server := web.NewFastHTTPServer(vertx, config)
+	server := web.NewFastHTTPServer(gocmd, config)
 
 	router := server.FastRouter()
 	router.GETFast("/health", func(ctx *web.FastRequestContext) error {
@@ -45,8 +45,8 @@ func main() {
 	server.SetHandler(func(ctx *fasthttp.RequestCtx) {
 		reqCtx := &web.FastRequestContext{
 			RequestCtx: ctx,
-			Vertx:      vertx,
-			EventBus:   vertx.EventBus(),
+			GoCMD:      gocmd,
+			EventBus:   gocmd.EventBus(),
 			Params:     make(map[string]string),
 		}
 		router.ServeFastHTTP(reqCtx)
