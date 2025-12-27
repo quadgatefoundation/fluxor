@@ -1,0 +1,276 @@
+name: Stress Test
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'pkg/**'
+      - 'cmd/**'
+      - 'loadtest/**'
+      - 'go.mod'
+      - 'go.sum'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'pkg/**'
+      - 'cmd/**'
+      - 'loadtest/**'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of stress test to run'
+        required: false
+        default: 'stress'
+        type: choice
+        options:
+          - stress
+          - spike
+          - load
+      max_users:
+        description: 'Maximum virtual users (for stress test)'
+        required: false
+        default: '20000'
+        type: string
+      duration:
+        description: 'Test duration in minutes'
+        required: false
+        default: '8'
+        type: string
+  schedule:
+    # Run stress tests nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: '1.24'
+  TEST_TYPE: ${{ github.event.inputs.test_type || 'stress' }}
+  MAX_USERS: ${{ github.event.inputs.max_users || '20000' }}
+  TEST_DURATION: ${{ github.event.inputs.duration || '8' }}
+
+jobs:
+  stress-test:
+    name: Stress Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    services:
+      nats:
+        image: nats:2.12-alpine
+        ports:
+          - 4222:4222
+        options: >-
+          --health-cmd "nats-server --version"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-${{ env.GO_VERSION }}-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Install k6
+      run: |
+        sudo gpg -k
+        sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+        echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+        sudo apt-get update
+        sudo apt-get install -y k6
+        k6 version
+
+    - name: Build enterprise example
+      run: |
+        echo "Building enterprise example..."
+        go build -v -o /tmp/fluxor-enterprise ./cmd/enterprise/main.go
+        if [ $? -eq 0 ]; then
+          echo "✓ Build successful"
+          ls -lh /tmp/fluxor-enterprise
+        else
+          echo "✗ Build failed"
+          exit 1
+        fi
+
+    - name: Wait for NATS to be ready
+      run: |
+        echo "Waiting for NATS server..."
+        sudo apt-get update -qq && sudo apt-get install -y netcat-openbsd > /dev/null 2>&1 || true
+        for i in {1..30}; do
+          if nc -z localhost 4222 2>/dev/null; then
+            echo "✓ NATS is ready"
+            break
+          fi
+          echo "Waiting for NATS... ($i/30)"
+          sleep 1
+        done
+        if ! nc -z localhost 4222 2>/dev/null; then
+          echo "✗ NATS failed to start"
+          exit 1
+        fi
+
+    - name: Start enterprise server
+      run: |
+        echo "Starting enterprise server..."
+        # Start server in background
+        /tmp/fluxor-enterprise > /tmp/server.log 2>&1 &
+        SERVER_PID=$!
+        echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+        
+        # Wait for server to initialize
+        echo "Waiting for server to initialize..."
+        sleep 15
+        
+        # Check if server is still running
+        if ps -p $SERVER_PID > /dev/null 2>&1; then
+          echo "✓ Server started successfully (PID: $SERVER_PID)"
+          
+          # Wait for health endpoint to be ready
+          for i in {1..30}; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 2 http://localhost:8080/health 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✓ Server health check passed"
+              break
+            fi
+            echo "Waiting for health endpoint... ($i/30)"
+            sleep 1
+          done
+        else
+          echo "✗ Server failed to start"
+          echo "=== Server Logs ==="
+          cat /tmp/server.log || true
+          exit 1
+        fi
+
+    - name: Run stress test
+      id: stresstest
+      run: |
+        echo "Running ${{ env.TEST_TYPE }} test..."
+        echo "Max Users: ${{ env.MAX_USERS }}"
+        echo "Duration: ${{ env.TEST_DURATION }} minutes"
+        
+        # Determine which test script to use
+        TEST_SCRIPT="loadtest/stress-test.js"
+        if [ "${{ env.TEST_TYPE }}" = "spike" ]; then
+          TEST_SCRIPT="loadtest/spike-test.js"
+        elif [ "${{ env.TEST_TYPE }}" = "load" ]; then
+          TEST_SCRIPT="loadtest/load-test.js"
+        fi
+        
+        # Run k6 stress test
+        BASE_URL=http://localhost:8080 k6 run \
+          --out json=stress_results.json \
+          --summary-export=stress_summary.json \
+          $TEST_SCRIPT || TEST_EXIT_CODE=$?
+        
+        # Check if server is still running
+        if ! ps -p $SERVER_PID > /dev/null 2>&1; then
+          echo "✗ Server crashed during stress test"
+          echo "=== Server Logs ==="
+          tail -n 100 /tmp/server.log || true
+          exit 1
+        fi
+        
+        # Exit with test result (k6 returns non-zero on threshold failures, but we want to continue)
+        exit ${TEST_EXIT_CODE:-0}
+
+    - name: Parse and display results
+      if: always()
+      run: |
+        if [ -f stress_results.json ]; then
+          echo "## Stress Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Extract key metrics using jq if available, or basic parsing
+          if command -v jq &> /dev/null; then
+            TOTAL_REQUESTS=$(jq -r '.metrics.http_reqs.values.count // 0' stress_results.json)
+            RPS=$(jq -r '.metrics.http_reqs.values.rate // 0' stress_results.json | awk '{printf "%.2f", $1}')
+            P95_LATENCY=$(jq -r '.metrics.http_req_duration.values."p(95)" // 0' stress_results.json | awk '{printf "%.2f", $1}')
+            ERROR_RATE=$(jq -r '.metrics.errors.values.rate // 0' stress_results.json | awk '{printf "%.4f", $1 * 100}')
+            MAX_VUS=$(jq -r '.metrics.vus_max.values.max // 0' stress_results.json)
+            
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Test Type | ${{ env.TEST_TYPE }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Max Virtual Users | $MAX_VUS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Total Requests | $TOTAL_REQUESTS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Requests/sec | $RPS |" >> $GITHUB_STEP_SUMMARY
+            echo "| P95 Latency | ${P95_LATENCY}ms |" >> $GITHUB_STEP_SUMMARY
+            echo "| Error Rate | ${ERROR_RATE}% |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Test Type: ${{ env.TEST_TYPE }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Results file generated: stress_results.json" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Full Results" >> $GITHUB_STEP_SUMMARY
+          echo "See artifacts for complete JSON results." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ Stress test results file not found" >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Upload stress test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: stress-test-results-${{ github.sha }}-${{ env.TEST_TYPE }}
+        path: |
+          stress_results.json
+          stress_summary.json
+          /tmp/server.log
+        retention-days: 30
+
+    - name: Stop server gracefully
+      if: always()
+      run: |
+        if [ -n "$SERVER_PID" ]; then
+          echo "Stopping server gracefully (PID: $SERVER_PID)..."
+          # Send SIGTERM for graceful shutdown
+          kill -TERM $SERVER_PID 2>/dev/null || true
+          sleep 5
+          # Force kill if still running
+          if ps -p $SERVER_PID > /dev/null 2>&1; then
+            echo "Force stopping server..."
+            kill -9 $SERVER_PID 2>/dev/null || true
+          fi
+          echo "✓ Server stopped"
+        fi
+
+    - name: Check server logs for errors
+      if: always()
+      run: |
+        if [ -f /tmp/server.log ]; then
+          echo "=== Server Logs (last 100 lines) ==="
+          tail -n 100 /tmp/server.log || true
+          
+          # Check for critical errors
+          if grep -i "fatal\|panic\|error" /tmp/server.log | tail -n 20; then
+            echo "⚠️ Found errors in server logs"
+          fi
+        fi
+
+    - name: Test Summary
+      if: success()
+      run: |
+        echo "## ✅ Stress Test Completed Successfully" >> $GITHUB_STEP_SUMMARY
+        echo "- Test Type: ${{ env.TEST_TYPE }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Server remained stable throughout the test" >> $GITHUB_STEP_SUMMARY
+        echo "- Results uploaded as artifacts" >> $GITHUB_STEP_SUMMARY
+
