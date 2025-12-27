@@ -72,12 +72,12 @@ func TestFluxorContext_Deploy(t *testing.T) {
 	// Wait for async start to complete
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for time.Now().Before(deadline) {
-		if verticle.started {
+		if verticle.isStarted() {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if !verticle.started {
+	if !verticle.isStarted() {
 		t.Error("Verticle should be started")
 	}
 }
@@ -98,7 +98,7 @@ func TestFluxorContext_Undeploy(t *testing.T) {
 	// Wait for async start to complete before undeploying
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for time.Now().Before(deadline) {
-		if verticle.started {
+		if verticle.isStarted() {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -109,7 +109,7 @@ func TestFluxorContext_Undeploy(t *testing.T) {
 		t.Errorf("Undeploy() error = %v", err)
 	}
 
-	if !verticle.stopped {
+	if !verticle.isStopped() {
 		t.Error("Verticle should be stopped")
 	}
 }

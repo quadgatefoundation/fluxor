@@ -3,23 +3,41 @@ package core
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 )
 
 type testVerticle struct {
+	mu      sync.RWMutex
 	started bool
 	stopped bool
 }
 
 func (v *testVerticle) Start(ctx FluxorContext) error {
+	v.mu.Lock()
 	v.started = true
+	v.mu.Unlock()
 	return nil
 }
 
 func (v *testVerticle) Stop(ctx FluxorContext) error {
+	v.mu.Lock()
 	v.stopped = true
+	v.mu.Unlock()
 	return nil
+}
+
+func (v *testVerticle) isStarted() bool {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v.started
+}
+
+func (v *testVerticle) isStopped() bool {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v.stopped
 }
 
 func TestGoCMD_DeployVerticle(t *testing.T) {
@@ -46,12 +64,12 @@ func TestGoCMD_DeployVerticle(t *testing.T) {
 	// Wait for async start to complete
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for time.Now().Before(deadline) {
-		if verticle.started {
+		if verticle.isStarted() {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if !verticle.started {
+	if !verticle.isStarted() {
 		t.Error("Verticle should be started")
 	}
 }
@@ -83,7 +101,7 @@ func TestGoCMD_UndeployVerticle(t *testing.T) {
 	// Wait for async start to complete before undeploying
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for time.Now().Before(deadline) {
-		if verticle.started {
+		if verticle.isStarted() {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -93,7 +111,7 @@ func TestGoCMD_UndeployVerticle(t *testing.T) {
 	if err != nil {
 		t.Errorf("UndeployVerticle() error = %v", err)
 	}
-	if !verticle.stopped {
+	if !verticle.isStopped() {
 		t.Error("Verticle should be stopped")
 	}
 }

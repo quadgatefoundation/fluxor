@@ -482,7 +482,7 @@ func TestDeploymentState_CloseUndeploysAll(t *testing.T) {
 	for time.Now().Before(deadline) {
 		allStarted := true
 		for _, v := range verticles {
-			if !v.started {
+			if !v.isStarted() {
 				allStarted = false
 				break
 			}
@@ -495,7 +495,7 @@ func TestDeploymentState_CloseUndeploysAll(t *testing.T) {
 
 	// Verify all started
 	for i, v := range verticles {
-		if !v.started {
+		if !v.isStarted() {
 			t.Errorf("verticle %d should be started", i)
 		}
 	}
@@ -508,7 +508,7 @@ func TestDeploymentState_CloseUndeploysAll(t *testing.T) {
 
 	// Verify all stopped
 	for i, v := range verticles {
-		if !v.stopped {
+		if !v.isStopped() {
 			t.Errorf("verticle %d should be stopped after Close()", i)
 		}
 	}
