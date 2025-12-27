@@ -1,8 +1,9 @@
 package core
 
 import (
-	"fmt"
 	"time"
+
+	"github.com/fluxorio/fluxor/pkg/core/failfast"
 )
 
 // ValidateAddress validates an event bus address
@@ -44,15 +45,13 @@ func ValidateBody(body interface{}) error {
 }
 
 // FailFast panics with an error (fail-fast principle)
+// Deprecated: Use failfast.Err instead
 func FailFast(err error) {
-	if err != nil {
-		panic(fmt.Errorf("fail-fast: %w", err))
-	}
+	failfast.Err(err)
 }
 
 // FailFastIf panics if condition is true
+// Deprecated: Use failfast.If instead
 func FailFastIf(condition bool, message string) {
-	if condition {
-		panic(fmt.Errorf("fail-fast: %s", message))
-	}
+	failfast.If(!condition, message)
 }

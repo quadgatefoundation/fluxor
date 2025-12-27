@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fluxorio/fluxor/pkg/core/concurrency"
+	"github.com/fluxorio/fluxor/pkg/core/failfast"
 	"github.com/google/uuid"
 )
 
@@ -235,7 +236,7 @@ func (eb *eventBus) Request(address string, body interface{}, timeout time.Durat
 func (eb *eventBus) Consumer(address string) Consumer {
 	// Fail-fast: validate address immediately
 	if err := ValidateAddress(address); err != nil {
-		FailFast(err)
+		failfast.Err(err)
 	}
 
 	eb.mu.Lock()
@@ -297,9 +298,7 @@ type consumer struct {
 
 func (c *consumer) Handler(handler MessageHandler) Consumer {
 	// Fail-fast: handler cannot be nil
-	if handler == nil {
-		FailFast(&EventBusError{Code: "INVALID_HANDLER", Message: "handler cannot be nil"})
-	}
+	failfast.NotNil(handler, "handler")
 
 	c.mu.Lock()
 	c.handler = handler

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/fluxorio/fluxor/pkg/core/failfast"
 )
 
 // GoCMD is the main entry point for the Fluxor runtime
@@ -75,10 +77,7 @@ const (
 // NewGoCMD creates a new GoCMD instance
 func NewGoCMD(ctx context.Context) GoCMD {
 	gx, err := NewGoCMDWithOptions(ctx, GoCMDOptions{})
-	if err != nil {
-		// Fail-fast: default construction should not fail.
-		panic(err)
-	}
+	failfast.Err(err) // Fail-fast: default construction should not fail.
 	return gx
 }
 

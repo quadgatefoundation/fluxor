@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/fluxorio/fluxor/pkg/core/concurrency"
+	"github.com/fluxorio/fluxor/pkg/core/failfast"
 )
 
 // BaseVerticle provides a Java-style abstract base class for verticles
@@ -166,9 +167,7 @@ func (bv *BaseVerticle) IsStopped() bool {
 // This is a convenience method for subclasses
 func (bv *BaseVerticle) RegisterConsumer(consumer Consumer) {
 	// Fail-fast: consumer cannot be nil
-	if consumer == nil {
-		FailFast(&EventBusError{Code: "INVALID_CONSUMER", Message: "consumer cannot be nil"})
-	}
+	failfast.NotNil(consumer, "consumer")
 	bv.mu.Lock()
 	defer bv.mu.Unlock()
 	bv.consumers = append(bv.consumers, consumer)
@@ -178,9 +177,7 @@ func (bv *BaseVerticle) RegisterConsumer(consumer Consumer) {
 // Returns the consumer for further configuration
 func (bv *BaseVerticle) Consumer(address string) Consumer {
 	// Fail-fast: verticle must be started
-	if bv.eventBus == nil {
-		FailFast(&EventBusError{Code: "NOT_STARTED", Message: "verticle not started - cannot create consumer"})
-	}
+	failfast.NotNil(bv.eventBus, "eventBus (verticle not started - cannot create consumer)")
 	consumer := bv.eventBus.Consumer(address)
 	bv.RegisterConsumer(consumer)
 	return consumer
@@ -215,7 +212,7 @@ func (bv *BaseVerticle) EventLoop() concurrency.Executor {
 func (bv *BaseVerticle) RunOnEventLoop(task concurrency.Task) error {
 	// Fail-fast: task cannot be nil
 	if task == nil {
-		FailFast(&EventBusError{Code: "INVALID_TASK", Message: "task cannot be nil"})
+		return &EventBusError{Code: "INVALID_TASK", Message: "task cannot be nil"}
 	}
 	bv.mu.RLock()
 	eventLoop := bv.eventLoop

@@ -2,6 +2,8 @@ package core
 
 import (
 	"sync"
+
+	"github.com/fluxorio/fluxor/pkg/core/failfast"
 )
 
 // BaseServer provides a Java-style abstract base class for HTTP servers
@@ -31,10 +33,7 @@ type BaseServer struct {
 
 // NewBaseServer creates a new BaseServer
 func NewBaseServer(name string, gocmd GoCMD) *BaseServer {
-	if gocmd == nil {
-		// Fail-fast: gocmd cannot be nil
-		panic("gocmd cannot be nil")
-	}
+	failfast.NotNil(gocmd, "gocmd") // Fail-fast: gocmd cannot be nil
 	return &BaseServer{
 		name:   name,
 		gocmd:  gocmd,

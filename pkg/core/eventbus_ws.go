@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fluxorio/fluxor/pkg/core/failfast"
 	"github.com/gorilla/websocket"
 )
 
@@ -45,9 +46,7 @@ type wsMessage struct {
 // NewWebSocketEventBusBridge creates a new WebSocket bridge
 func NewWebSocketEventBusBridge(eventBus EventBus) *WebSocketEventBusBridge {
 	// Fail-fast: eventBus cannot be nil
-	if eventBus == nil {
-		FailFast(&EventBusError{Code: "INVALID_EVENTBUS", Message: "eventBus cannot be nil"})
-	}
+	failfast.NotNil(eventBus, "eventBus")
 	return &WebSocketEventBusBridge{
 		eventBus: eventBus,
 		upgrader: websocket.Upgrader{

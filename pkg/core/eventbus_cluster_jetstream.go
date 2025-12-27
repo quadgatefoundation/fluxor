@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fluxorio/fluxor/pkg/core/concurrency"
+	"github.com/fluxorio/fluxor/pkg/core/failfast"
 	"github.com/nats-io/nats.go"
 )
 
@@ -318,7 +319,7 @@ func (eb *clusterJSEventBus) Consumer(address string) Consumer {
 	// Fail-fast: keep contract consistent with in-memory EventBus.
 	// Invalid address is a programmer error and should be caught in dev.
 	if err := ValidateAddress(address); err != nil {
-		FailFast(err)
+		failfast.Err(err)
 	}
 	return newClusterJSConsumer(address, eb)
 }

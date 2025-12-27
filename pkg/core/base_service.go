@@ -1,5 +1,9 @@
 package core
 
+import (
+	"github.com/fluxorio/fluxor/pkg/core/failfast"
+)
+
 // BaseService provides a Java-style abstract base class for service verticles
 // Services typically handle request-reply patterns and provide business logic
 // Combines BaseVerticle with service-specific patterns
@@ -17,7 +21,7 @@ type BaseService struct {
 func NewBaseService(name, address string) *BaseService {
 	// Fail-fast: validate address
 	if err := ValidateAddress(address); err != nil {
-		FailFast(err)
+		failfast.Err(err)
 	}
 	return &BaseService{
 		BaseVerticle: NewBaseVerticle(name),
@@ -37,9 +41,7 @@ func (bs *BaseService) doStart(ctx FluxorContext) error {
 // handleRequest handles incoming service requests
 func (bs *BaseService) handleRequest(ctx FluxorContext, msg Message) error {
 	// Fail-fast: message cannot be nil
-	if msg == nil {
-		FailFast(&EventBusError{Code: "INVALID_MESSAGE", Message: "message cannot be nil"})
-	}
+	failfast.NotNil(msg, "message")
 	// If custom handler is set, use it
 	if bs.requestHandler != nil {
 		return bs.requestHandler(ctx, msg)
@@ -58,9 +60,7 @@ func (bs *BaseService) doHandleRequest(ctx FluxorContext, msg Message) error {
 // SetRequestHandler sets a custom request handler
 func (bs *BaseService) SetRequestHandler(handler MessageHandler) {
 	// Fail-fast: handler cannot be nil
-	if handler == nil {
-		FailFast(&EventBusError{Code: "INVALID_HANDLER", Message: "handler cannot be nil"})
-	}
+	failfast.NotNil(handler, "handler")
 	bs.requestHandler = handler
 }
 

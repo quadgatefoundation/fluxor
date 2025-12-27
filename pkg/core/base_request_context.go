@@ -2,6 +2,8 @@ package core
 
 import (
 	"sync"
+
+	"github.com/fluxorio/fluxor/pkg/core/failfast"
 )
 
 // BaseRequestContext provides a Java-style abstract base class for request contexts
@@ -24,9 +26,7 @@ func NewBaseRequestContext() *BaseRequestContext {
 // Set stores a value in the context
 func (brc *BaseRequestContext) Set(key string, value interface{}) {
 	// Fail-fast: key cannot be empty
-	if key == "" {
-		FailFast(&EventBusError{Code: "INVALID_KEY", Message: "key cannot be empty"})
-	}
+	failfast.If(key != "", "key cannot be empty")
 	brc.mu.Lock()
 	defer brc.mu.Unlock()
 	if brc.data == nil {
